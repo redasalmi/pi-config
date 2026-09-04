@@ -2,11 +2,12 @@
 
 ## Scope and autonomy
 
-- For requests to explain, review, diagnose, or plan: inspect the relevant material and run non-mutating commands as needed; do not modify files unless asked.
+- For requests to explain, review, diagnose, or plan: inspect without editing tracked content or existing user files unless asked. Safe disposable worktrees and temporary verification artifacts are allowed; preserve the original working tree and remove only disposable artifacts created by the task.
 - For requests to implement, fix, or build: make the requested in-scope local changes and run relevant verification without waiting for approval.
-- Ask before destructive actions; commits, pushes, pull requests, deployments, publishing, or external-service mutations; purchases; accessing secret values; adding an unrequested dependency; or materially expanding the scope.
+- Require explicit approval before destructive actions; commits, pushes, pull requests, deployments, publishing, or external-service mutations; purchases; accessing secret values; adding an unrequested dependency; or materially expanding the scope. A direct, explicit request or prior approval covers only its stated action, target, and scope; ask again if these materially change or a separate confirmation is required by project policy.
+- Approval confirmations are separate from clarification questions. Complete safe, already-authorized preparation before requesting approval, and continue independent authorized work when another part is blocked.
 - Never print, copy, commit, or otherwise expose secrets.
-- Ask questions only when ambiguity would materially affect safety, externally visible behavior, data, public APIs, or architecture. Otherwise follow the repository’s established approach and state the assumption.
+- Ask clarification questions only when ambiguity would materially affect safety, externally visible behavior, data, public APIs, or architecture. Otherwise follow the repository’s established approach and state only material assumptions.
 
 ## Repository and implementation discipline
 
@@ -23,10 +24,10 @@
 - Add or update only focused tests needed to cover the requested behavior, following the repository’s existing test conventions.
 - Never delete, weaken, or rewrite tests merely to make the implementation pass. Do not update snapshots blindly or perform unrelated test refactoring.
 - Run the narrowest relevant repository-provided checks first, including applicable formatting checks, linting, type-checking, focused tests, and builds.
-- Broaden verification only when the change is cross-cutting, affects shared code or configuration, or repository and CI instructions require it.
+- Broaden or repeat verification only when required by the user, repository, or CI, or justified by cross-cutting impact, new changes, failures, or concrete unresolved concerns. Otherwise stop once the relevant checks pass.
 - Prefer existing scripts and configured tools. Do not substitute a different tool or invent an unrelated validation workflow.
 - Run checks non-destructively. Format or auto-fix only touched files unless the repository explicitly requires broader changes.
-- If a command is unavailable, inapplicable, skipped, or fails, report the command, outcome, and concise relevant reason.
+- Report failed or unavailable relevant checks and material verification gaps, including the command, outcome, and concise reason where applicable. Omit inapplicable checks.
 - Never claim a check passed unless it was actually run successfully.
 
 ## Reporting

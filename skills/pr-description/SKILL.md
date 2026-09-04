@@ -118,11 +118,11 @@ Read repository instructions and contribution guidance before drafting. For prov
 
 Use this order:
 
-1. the structure already present in the specific PR/MR during Refresh;
-2. an explicitly selected or provider-reported template;
-3. an automatically applicable provider default or target-branch template;
-4. one unambiguous repository default;
-5. an optional template explicitly selected by the user;
+1. the user's explicit current template or structure selection, including an optional template;
+2. the structure already present in the specific PR/MR during Refresh, when the user has not requested a different structure;
+3. a provider-reported selected template;
+4. an automatically applicable provider default or target-branch template;
+5. one unambiguous repository default;
 6. the default structure in this skill.
 
 Do not merge multiple optional templates into a synthetic template. When only optional alternatives exist and none is selected, ask only if the choice materially changes required content; otherwise use the skill default and state the unresolved template choice outside the body.

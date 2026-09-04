@@ -154,9 +154,11 @@ Use this format internally or in Review mode:
 
 A finding must identify an observed visible or behavioral symptom. “Feels dated,” “needs polish,” unsupported taste, and behavior inferred from a static image are not findings. Group multiple symptoms under one root cause when one correction addresses them.
 
-## 7. Fix root causes and recheck
+## 7. Fix root causes and recheck — Implement mode only
 
-Prioritize the highest-impact issues in each pass. Prefer system fixes:
+Skip this section in **Review** mode. Report observed defects and evidence gaps without editing; a review does not require correcting the defects it identifies.
+
+In **Implement** mode, prioritize the highest-impact issues in each pass. Prefer system fixes:
 
 - correct hierarchy rather than add decoration;
 - repair the grid rather than nudge unrelated elements;

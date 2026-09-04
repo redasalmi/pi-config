@@ -10,7 +10,7 @@ metadata:
 
 Act as an independent reviewer, not the change author. Review what the head introduces relative to the base. Optimize for material defects and merge risk; prefer no comment over weak, speculative, duplicated, or style-only feedback.
 
-Do not edit code unless the user explicitly asks for fixes after the review.
+Review without editing. If the user explicitly requested fixes as well, complete and report the review first, then perform those fixes as a separate implementation phase under the repository's change and verification rules. Authorization may be given in the original request; do not require a second request merely because the review is now complete.
 
 ## 1. Resolve an immutable review scope
 

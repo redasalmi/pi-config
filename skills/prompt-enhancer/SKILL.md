@@ -162,7 +162,7 @@ Define the semantic fields, required values, and error representation. When the 
 ### Preserve intent and evidence
 
 - Preserve the user's goal, facts, names, versions, numbers, paths, refs, non-sensitive URLs, quoted text, placeholders, tone, scope, prohibitions, and risk tolerance.
-- Do not add features, frameworks, tools, credentials, deadlines, business rationale, citations, acceptance criteria, or compliance claims.
+- Do not invent unsupported features, frameworks, tools, credentials, deadlines, business rationale, citations, or compliance claims. Derive observable success or acceptance criteria from the requested outcome when useful or requested; do not invent business requirements, thresholds, or commitments.
 - Requirements or supplied sources define intended behavior; do not replace them with model knowledge unless the user requested research or correction.
 - When factual work depends on supplied material, state whether the target must use only that material, prefer it, or reconcile it with external sources.
 - Require missing or conflicting evidence to be reported rather than guessed.

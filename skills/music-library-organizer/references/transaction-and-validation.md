@@ -37,7 +37,15 @@ Use the smallest unit that must remain internally consistent:
 - a cue sheet, its referenced audio image, log, and checksums;
 - an authorized playlist plus the exact paths changed with it.
 
-Do not publish half of a multi-file release when the remaining files are required to interpret it correctly.
+Validate the complete unit before publishing any member; when staging is required, stage the whole unit first. An intact same-filesystem move-only unit may use the direct rename protocol below. Record whether publication is atomic or recoverable per-file; these provide different visibility guarantees. If partial visibility would break required cue, playlist, or other coupled references, require atomic publication or leave the unit staged and report the blocker.
+
+### Publish a validated unit
+
+- **New release folder:** assemble the entire final tree in a unique staging directory on the destination filesystem, outside the final music hierarchy. After every member passes validation, publish the folder with one atomic no-clobber directory rename.
+- **Single file:** publish with an atomic no-clobber rename, except for an explicitly scoped tag-only replacement using the backup protocol below.
+- **Additions to an existing folder:** retain all sources, stage and validate all members, and recheck every final path before publishing any member. Journal each member's publication and verification separately and publish with per-file no-clobber operations. This is recoverable, not atomically visible as a group; an interruption can leave a partial destination.
+
+Verify support for the required publication primitive before staging. If safe publication is unavailable, preserve sources and any existing staging state and stop that unit. Remove no original source or backup until the whole unit passes final validation.
 
 ## Source preflight
 
@@ -64,16 +72,15 @@ A directory rename is appropriate only when the whole release directory maps int
 
 Do not rely on a generic move helper that may copy and delete automatically.
 
-For each file:
+For every file in the unit, before publishing any member:
 
-1. Copy into a unique non-media staging name on the destination filesystem.
+1. Copy into the unit's staging area on the destination filesystem, outside the final hierarchy or under a unique non-media name.
 2. Preserve required permissions and filesystem metadata where supported.
 3. Confirm the source remained stable during the copy.
 4. Compare byte count and a cryptographic full-file digest between source and staged copy.
 5. Validate the staged media with Mutagen and ffprobe.
-6. Publish with a no-clobber rename.
-7. Revalidate the final file.
-8. Remove the source only after the complete publication unit passes final validation.
+
+Once all members pass, publish using the appropriate unit protocol above, revalidate every final member, and only then remove original sources for a move.
 
 For a user-requested copy, never remove the source.
 
@@ -87,9 +94,9 @@ Never perform the first tag save against the sole original when same-filesystem 
 4. Confirm the exact changed values and compare all unrelated tags and embedded artwork.
 5. Compare technical stream properties.
 6. Compare encoded-audio packet payload identity before and after.
-7. Publish the validated staging file.
+7. After every member of the publication unit passes, publish using the appropriate unit protocol above.
 
-For move-plus-retagging, publish to the new no-clobber destination and remove the original only after final validation.
+For move-plus-retagging, publish to the new no-clobber destination and remove originals only after the entire unit passes final validation.
 
 For tag-only editing at the same path:
 
@@ -143,6 +150,9 @@ On failure inside a publication unit:
 
 - stop that unit;
 - do not remove its source or transaction backup;
+- for interrupted per-file publication, reconcile each final and staged path with the journal, retain valid published members and all originals, and report exact paths as **Partial** rather than claiming rollback;
+- before resuming, revalidate source stability, staged integrity, and the identity and content of every already-published member; reuse a final member only when the journal proves this run published it and it remains unchanged, and publish remaining members only to absent paths;
+- if any member changed externally or ownership is uncertain, leave it untouched and report a recovery blocker;
 - remove an unpublished temporary copy only when the journal proves the source remains intact;
 - if a final path was published but fails validation, restore the original only when no external change occurred and the rollback is no-clobber safe;
 - preserve staging when it may contain the only complete copy or useful recovery evidence;

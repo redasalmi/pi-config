@@ -179,7 +179,7 @@ These devices are not banned. Each needs a product-specific role. Spend boldness
 
 For any new or substantially reshaped screen, multi-component layout, responsive behavior, theme/token change, or custom interaction, read and follow [references/visual-qa.md](references/visual-qa.md). Scale the matrix down for an isolated fix, but still inspect a representative render when possible.
 
-The core loop is:
+In **Implement** mode, the core loop is:
 
 1. capture a stable baseline when one exists;
 2. choose a small risk-based matrix of routes, states, sizes, themes, inputs, and platforms;
@@ -188,6 +188,8 @@ The core loop is:
 5. fix the highest-impact root causes rather than polishing symptoms;
 6. re-render the same cases and compare like for like;
 7. run relevant formatting, type, unit, integration, build, and existing accessibility checks.
+
+In **Review** mode, inspect rendered evidence and relevant behavior, report findings and coverage gaps, and stop without implementing corrections. Known defects do not prevent completion of a review; missing evidence may require a **Review incomplete** verdict.
 
 Automated accessibility checks and component-library claims are supporting evidence, not proof. If the interface cannot be rendered or the active model cannot inspect images, state exactly what was and was not verified.
 

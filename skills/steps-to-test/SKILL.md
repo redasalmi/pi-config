@@ -1,6 +1,6 @@
 ---
 name: steps-to-test
-description: Drafts, revises, or audits framework-agnostic manual Steps to Test from accepted requirements and repository evidence. Use for QA scripts, product or browser workflows, bug-fix verification, acceptance checks, role or state coverage, focused regressions, or concise technical verification when behavior is not visible in the UI. Do not use for Domaine or Shopify-theme tickets (use domaine-steps-to-test), PR code-review findings, PR descriptions, automated test implementation or execution, general test strategy, or exploratory-testing charters.
+description: Drafts, revises, or audits framework-agnostic manual Steps to Test from accepted requirements and repository evidence. Use for QA scripts, product or browser workflows, bug-fix verification, acceptance checks, role or state coverage, focused regressions, or concise technical verification when behavior is not visible in the UI. Do not use for PR code-review findings, PR descriptions, automated test implementation or execution, general test strategy, or exploratory-testing charters.
 compatibility: Git is required only for branch-derived scripts. Optional work-item or PR integrations may supply requirements and revision metadata. The skill uses read-only repository inspection and never starts the product or runs tests.
 metadata:
   author: local

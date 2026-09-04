@@ -229,12 +229,14 @@ Show the manifest before mutation when requested, when a folder template must be
 
 Read and follow [references/transaction-and-validation.md](references/transaction-and-validation.md) before any Apply mutation.
 
-Use small all-or-nothing publication units, normally:
+Use small publication units, normally:
 
 - one complete release folder and its sidecars;
 - one loose track plus its directly coupled sidecars;
 - one tag-only file replacement;
 - one cue/image release whose internal references remain valid.
+
+Validate every member before publishing any member; when staging is required, stage the whole unit first. A new release folder can be published atomically with one directory rename. Additions to an existing folder use recoverable per-file publication, not an all-or-nothing filesystem transaction. If the unit requires simultaneous visibility, leave it staged and report a blocker when atomic publication is unavailable.
 
 For each unit:
 
@@ -244,14 +246,14 @@ For each unit:
 4. Verify staged bytes against the source before editing metadata.
 5. Apply only the planned tag and path-reference changes to staging.
 6. Reopen and validate staged media, exact changed tags, preserved tags/artwork, technical stream properties, and encoded-audio identity.
-7. Publish with an atomic no-clobber rename when supported.
-8. Revalidate the final paths before removing the original source entry or temporary backup.
+7. Publish a single file or complete new folder with one atomic no-clobber rename, or follow the reference's journaled per-file protocol for additions to an existing folder. Use the backup-and-replace protocol below for tag-only edits at the same path. Stop if the required safe publication primitive is unavailable.
+8. Revalidate every final member before removing any original source entry or temporary backup from the unit.
 
 A same-filesystem move-only unit may use an atomic no-clobber rename after the preflight checks. Do not rely on a high-level move operation whose cross-filesystem fallback silently copies and deletes.
 
 For a tag-only edit at the same path, edit a same-filesystem temporary copy, validate it, retain a recoverable original until final verification, and replace atomically. Preserve ownership, permissions, and relevant filesystem metadata where supported.
 
-If a unit fails, do not publish a partial release or remove its source. Keep the only good copy, retain enough journal/staging information for recovery, continue only with independent units, and report the exact state. Remove only temporary artifacts created by this run after their outcome is known.
+If a unit fails, stop further publication and retain its sources or backups. For interrupted per-file publication, reconcile all published and staged members with the journal and report the unit as **Partial**; do not claim rollback or atomicity. Keep the only good copy, continue only with independent units, and follow the reference's recovery checks before resuming or removing artifacts.
 
 ## Validate the result
 

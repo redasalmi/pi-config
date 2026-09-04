@@ -15,7 +15,7 @@ This file records provenance. It should not be loaded for routine generation.
   - The main file should remain focused; detailed references can load on demand.
   - The specification recommends keeping `SKILL.md` under 500 lines.
 
-**Applied:** narrow the description around framework-agnostic manual QA and explicitly exclude Domaine/Shopify tickets, code review, PR descriptions, automated-test work, and general test strategy. Keep specialized risk and technical-verification detail in one shallow reference.
+**Applied:** narrow the description around framework-agnostic manual QA and explicitly exclude code review, PR descriptions, automated-test work, and general test strategy. Keep specialized risk and technical-verification detail in one shallow reference.
 
 ## IBM Engineering Test Management
 

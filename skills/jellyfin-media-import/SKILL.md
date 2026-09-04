@@ -168,7 +168,7 @@ Never delete a staging file or directory that may contain the only remaining cop
 
 ### No-clobber move or copy
 
-For a same-filesystem move, use an atomic operation that fails if the destination exists. Never use a default rename that may replace it. If no reliable no-clobber primitive exists, use the staged-copy protocol.
+For a same-filesystem move, use an atomic operation that fails if the destination exists. Never use a default rename that may replace it. Verify that the destination filesystem supports safe no-clobber publication before moving sources into staging or copying payloads. If it does not, stop the affected unit, preserve its source and any existing staging state, and report the missing capability. Staged copying handles cross-filesystem transfer; it does not replace the required publication primitive.
 
 For any copy, or for a cross-filesystem move:
 
