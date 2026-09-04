@@ -10,27 +10,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node"],
-    "paths": {
-      "@earendil-works/pi-coding-agent": [
-        "../../../.local/share/mise/installs/npm-earendil-works-pi-coding-agent/latest/lib/node_modules/@earendil-works/pi-coding-agent"
-      ],
-      "@earendil-works/pi-ai": [
-        "../../../.local/share/mise/installs/npm-earendil-works-pi-coding-agent/latest/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai"
-      ],
-      "@earendil-works/pi-ai/compat": [
-        "../../../.local/share/mise/installs/npm-earendil-works-pi-coding-agent/latest/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/compat.d.ts"
-      ],
-      "@earendil-works/pi-tui": [
-        "../../../.local/share/mise/installs/npm-earendil-works-pi-coding-agent/latest/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui"
-      ],
-      "typebox": [
-        "../../../.local/share/mise/installs/npm-earendil-works-pi-coding-agent/latest/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox"
-      ]
-    },
-    "typeRoots": [
-      "../../../.local/share/mise/installs/npm-earendil-works-pi-coding-agent/latest/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@types"
-    ]
   },
   "include": ["**/*.ts"],
-  "exclude": ["**/node_modules/**"]
+  "exclude": ["**/node_modules/**"],
 }
