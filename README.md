@@ -44,6 +44,23 @@ Pi supplies the packages listed in `peerDependencies` at runtime. Pinned
 `devDependencies` provide their types locally, without depending on a global
 Pi installation or machine-specific paths. No compilation step is needed.
 
+Run type-checking and all test scripts, stopping on the first failure:
+
+```bash
+npm run check
+```
+
+This includes the Browser smoke tests, which require `playwright-cli`,
+`chrome-devtools`, and Chrome to be installed.
+
+Run the isolated Web Access and Notify tests (no network requests or native
+notifications):
+
+```bash
+npm run test:web-access
+npm run test:notify
+```
+
 The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
 `chrome-devtools` (`chrome-devtools-mcp`), and `lighthouse` (`lighthouse`) on
 `PATH` for the corresponding backends. These external CLIs are not installed by
