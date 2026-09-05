@@ -49,6 +49,27 @@ The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
 `PATH` for the corresponding backends. These external CLIs are not installed by
 this package.
 
+## Notifications
+
+The Notify extension sends terminal notifications when an interactive run fully
+settles. Notifications include the session name, or the project folder name when
+unnamed. It supports iTerm2, Ghostty, WezTerm, rxvt-unicode, Kitty, and Windows
+Terminal (using PowerShell for Windows toasts).
+
+Notifications for blocking extension UI prompts are enabled by default. Prompt
+contents are not included in notifications. To disable them, set `notifyPrompts`
+to `false` in `~/.pi/agent/notify.json` (or `notify.json` inside your
+`PI_CODING_AGENT_DIR` override):
+
+```json
+{
+  "notifyPrompts": false
+}
+```
+
+Use `/reload` after editing the setting. Missing settings default to `true`;
+invalid settings also fall back to `true` with a UI warning.
+
 ## Optional: shared agent instructions
 
 `AGENTS.md` is not installed as a package resource. To use it globally, first
