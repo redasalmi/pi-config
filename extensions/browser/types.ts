@@ -109,14 +109,16 @@ export interface BrowserState {
   currentTitle?: string;
   sharedCdpEndpoint?: string;
   playwrightAttached?: boolean;
+  chromeDevtoolsPid?: number;
   lastBackend?: BrowserBackend;
   lastReportId?: string;
   readonly playwrightSession: string;
   readonly chromeDevtoolsSession: string;
 }
 
-export type BrowserStatePatch = Partial<Omit<BrowserState, "playwrightSession" | "chromeDevtoolsSession" | "sharedCdpEndpoint">> & {
+export type BrowserStatePatch = Partial<Omit<BrowserState, "playwrightSession" | "chromeDevtoolsSession" | "sharedCdpEndpoint" | "chromeDevtoolsPid">> & {
   sharedCdpEndpoint?: string | null;
+  chromeDevtoolsPid?: number | null;
 };
 
 export interface BrowserProcessResult extends ExecResult {

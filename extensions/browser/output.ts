@@ -17,6 +17,7 @@ export async function artifactIdsForPaths(
   ctx: ExtensionContext,
   paths: string[],
 ): Promise<string[]> {
+  if (paths.length === 0) return [];
   const wanted = new Set(paths);
   const manifest = await runtime.manifest(ctx);
   return manifest.artifacts

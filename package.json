@@ -19,6 +19,8 @@
   },
   "scripts": {
     "typecheck": "tsc --project extensions/tsconfig.json",
+    "test:browser": "node --test extensions/browser/tests/browser.test.ts",
+    "test:browser:smoke": "node --test extensions/browser/tests/smoke.test.ts",
     "test:codex": "node --test extensions/codex/tests/*.test.ts"
   },
   "pi": {

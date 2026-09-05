@@ -435,6 +435,40 @@ function sharedEndpointFlag(endpoint: string): string {
   return /^wss?:/i.test(endpoint) ? `--wsEndpoint=${endpoint}` : `--browserUrl=${endpoint}`;
 }
 
+function daemonPid(output: string): number | undefined {
+  if (/\bnot running\b/i.test(output)) return undefined;
+  const value = Number(output.match(/(?:^|\n)pid=(\d+)\b/)?.[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function reportsCliError(stdout: string, stderr: string, format: ChromeDevtoolsParams["outputFormat"]): boolean {
+  const textError = /(?:^|\n)Error:\s/i.test(`${stdout}\n${stderr}`);
+  if (format !== "json") return textError;
+  try {
+    const parsed = JSON.parse(stdout);
+    // CLI 1.8 emits MCP content blocks for errors, but strings or structured
+    // content for successful JSON results. Its exit code alone is insufficient.
+    if (parsed?.isError === true) return true;
+    if (Array.isArray(parsed)) {
+      return (parsed.length > 0 && parsed.every(item =>
+        item && typeof item === "object" && item.type === "text" && typeof item.text === "string"
+      )) || /(?:^|\n)Error:\s/i.test(stderr);
+    }
+    return /(?:^|\n)Error:\s/i.test(stderr);
+  } catch {
+    return textError;
+  }
+}
+
 async function ensureDaemon(
   pi: ExtensionAPI,
   runtime: BrowserRuntime,
@@ -444,13 +478,22 @@ async function ensureDaemon(
   timeout: number,
   sharedCdpEndpoint?: string,
 ): Promise<void> {
+  const current = await runtime.state(ctx);
+  if (current.chromeDevtoolsPid && processIsAlive(current.chromeDevtoolsPid)) return;
+  await runtime.updateState(ctx, {chromeDevtoolsPid: null});
   const workspace = await runtime.ensure(ctx);
-  const status = await runtime.exec(pi, "chrome-devtools", [`--sessionId=${sessionId}`, "status"], ctx, {
-    signal,
-    timeout,
-  });
-  const statusOutput = `${status.stdout}\n${status.stderr}`;
-  if (status.code === 0 && !status.killed && !/\bnot running\b/i.test(statusOutput)) return;
+  const checkStatus = async (): Promise<number | undefined> => {
+    const status = await runtime.exec(pi, "chrome-devtools", [`--sessionId=${sessionId}`, "status"], ctx, {signal, timeout});
+    if (status.code !== 0 || status.killed) {
+      throw new Error(`Chrome DevTools status failed: ${redactSecrets(`${status.stdout}\n${status.stderr}`)}`);
+    }
+    return daemonPid(status.stdout);
+  };
+  const existingPid = await checkStatus();
+  if (existingPid) {
+    await runtime.updateState(ctx, {chromeDevtoolsPid: existingPid, lastBackend: "chrome_devtools"});
+    return;
+  }
 
   const startArgs = [
     `--sessionId=${sessionId}`,
@@ -470,6 +513,9 @@ async function ensureDaemon(
     const output = redactSecrets(`${started.stdout}\n${started.stderr}`.trim());
     throw new Error(`${commandLabel(startArgs)} failed\n\n${truncateText(output)}`);
   }
+  const pid = await checkStatus();
+  if (!pid) throw new Error("Chrome DevTools started without a running daemon PID.");
+  await runtime.updateState(ctx, {chromeDevtoolsPid: pid, lastBackend: "chrome_devtools"});
 }
 
 async function executeCommand(
@@ -565,7 +611,13 @@ async function executeCommand(
     }
   }
   const cliCommand = redactSecrets(commandLabel(args));
-  const result = await runtime.exec(pi, "chrome-devtools", args, ctx, {signal, timeout});
+  if (command === "start" || command === "stop") await runtime.updateState(ctx, {chromeDevtoolsPid: null});
+  const result = await runtime.exec(pi, "chrome-devtools", args, ctx, {signal, timeout}).catch(async error => {
+    await runtime.updateState(ctx, {chromeDevtoolsPid: null});
+    throw error; // Never replay a command: it may have already mutated the page.
+  });
+  if (result.code !== 0 || result.killed) await runtime.updateState(ctx, {chromeDevtoolsPid: null});
+  else if (command === "status") await runtime.updateState(ctx, {chromeDevtoolsPid: daemonPid(result.stdout) ?? null});
 
   const stdout = redactSecrets(result.stdout.trim());
   const stderr = redactSecrets(result.stderr.trim());
@@ -583,7 +635,7 @@ async function executeCommand(
   const artifactIds = await artifactIdsForPaths(runtime, ctx, artifacts);
   const reportId = recorded.find(artifact => artifact.kind === "report")?.id;
 
-  const cliReportedError = /(?:^|\n)Error:\s/i.test(combined);
+  const cliReportedError = reportsCliError(result.stdout.trim(), result.stderr.trim(), params.outputFormat);
   if (result.code !== 0 || result.killed || cliReportedError) {
     const suffix = result.killed ? " (process terminated)" : cliReportedError ? " (CLI reported an error)" : ` (exit code ${result.code})`;
     throw new Error(`${cliCommand}${suffix}\n\n${output.text}`);

@@ -12,17 +12,13 @@ import type { BrowserWorkspace } from "./types.ts";
 export async function ensurePlaywrightConfig(workspace: BrowserWorkspace, sourcePath?: string): Promise<string> {
   const directory = join(workspace.root, ".playwright");
   const configPath = join(directory, "cli.config.json");
+  await assertNoSymlinkComponents(workspace.root, directory);
+  if (!sourcePath && await access(configPath).then(() => true, () => false)) {
+    await assertNoSymlinkEscape(workspace.root, configPath);
+    return configPath;
+  }
   await ensureDirectory(directory);
   await assertNoSymlinkComponents(workspace.root, directory);
-  if (!sourcePath) {
-    try {
-      await access(configPath);
-      await assertNoSymlinkEscape(workspace.root, configPath);
-      return configPath;
-    } catch {
-      // Create the managed default below.
-    }
-  }
   let source: Record<string, unknown> = {};
   if (sourcePath) {
     try {

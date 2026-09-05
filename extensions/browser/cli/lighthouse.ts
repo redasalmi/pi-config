@@ -485,6 +485,12 @@ function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
   const metrics: LighthouseMetric[] = [];
   const metricValues: Record<string, number> = {};
   const metricUnits: Record<string, string | undefined> = {};
+  for (const [id, audit] of Object.entries(audits)) {
+    if (typeof audit.numericValue === "number" && Number.isFinite(audit.numericValue)) {
+      metricValues[id] = audit.numericValue;
+      metricUnits[id] = audit.numericUnit;
+    }
+  }
   for (const id of METRIC_IDS) {
     const audit = audits[id];
     if (!audit) continue;
@@ -495,10 +501,6 @@ function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
       numericValue: audit.numericValue,
       numericUnit: audit.numericUnit,
     });
-    if (typeof audit.numericValue === "number") {
-      metricValues[id] = audit.numericValue;
-      metricUnits[id] = audit.numericUnit;
-    }
   }
 
   const failedAudits = Object.entries(audits)
@@ -590,12 +592,14 @@ function medianSummary(summaries: LighthouseSummary[]): LighthouseSummary {
     if (value === undefined) continue;
     metricValues[id] = value;
     metricUnits[id] = summaries.find(summary => summary.metricUnits[id])?.metricUnits[id];
-    metrics.push({
-      id,
-      value: formatNumericMetric(value, metricUnits[id]),
-      numericValue: value,
-      numericUnit: metricUnits[id],
-    });
+    if (METRIC_IDS.some(metricId => metricId === id)) {
+      metrics.push({
+        id,
+        value: formatNumericMetric(value, metricUnits[id]),
+        numericValue: value,
+        numericUnit: metricUnits[id],
+      });
+    }
   }
 
   const auditIds = [...new Set(summaries.flatMap(summary => Object.keys(summary.auditScores)))];

@@ -725,16 +725,27 @@ function cleanPath(value: string): string {
   return value.replace(/[),.;]+$/g, "");
 }
 
+function jsonSnapshotPath(output: string): string | undefined {
+  try {
+    const parsed = JSON.parse(output);
+    const path = parsed?.snapshot?.file ?? parsed?.result?.snapshot?.file;
+    return typeof path === "string" ? path : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function extractArtifactPaths(output: string): string[] {
+  const jsonPath = jsonSnapshotPath(output);
   const workspacePaths = output.match(/(?:\.playwright-cli|\.playwright)\/[^\s)'"`]+/g) ?? [];
   const linkedPaths = [...output.matchAll(/\[(?:Snapshot|Screenshot|PDF|Video|Trace|Artifact)[^\]]*\]\(([^)]+)\)/gi)]
     .map((match) => match[1])
     .filter((path): path is string => Boolean(path));
-  return [...new Set([...workspacePaths, ...linkedPaths].map(cleanPath))];
+  return [...new Set([...workspacePaths, ...linkedPaths, ...(jsonPath ? [jsonPath] : [])].map(cleanPath))];
 }
 
 function extractSnapshotPath(output: string, artifacts: string[]): string | undefined {
-  const explicit = output.match(/\[Snapshot[^\]]*\]\(([^)]+)\)/i)?.[1];
+  const explicit = jsonSnapshotPath(output) ?? output.match(/\[Snapshot[^\]]*\]\(([^)]+)\)/i)?.[1];
   if (explicit) return cleanPath(explicit);
   return artifacts.find((path) => /\.(?:ya?ml|md)$/i.test(path));
 }
@@ -859,7 +870,8 @@ async function executeAction(
   }
 
   const page = parsePageState(safeStdout);
-  const reported = resolveReportedPaths(workspace.root, extractArtifactPaths(`${safeStdout}\n${safeStderr}`));
+  const extractedPaths = [...extractArtifactPaths(safeStdout), ...extractArtifactPaths(safeStderr)];
+  const reported = resolveReportedPaths(workspace.root, extractedPaths);
   if (generatedOutput) reported.push(generatedOutput);
   const records = await runtime.record(ctx, "playwright", reported, "other", {
     correlationId,
@@ -867,7 +879,7 @@ async function executeAction(
     title: page.title,
   });
   const artifacts = records.map(artifact => artifact.path);
-  const reportedSnapshot = extractSnapshotPath(safeStdout, extractArtifactPaths(`${safeStdout}\n${safeStderr}`));
+  const reportedSnapshot = extractSnapshotPath(safeStdout, extractedPaths);
   const snapshotPath = reportedSnapshot ? resolveReportedPaths(workspace.root, [reportedSnapshot])[0] : undefined;
   const snapshot = snapshotPath ? await runtime.readArtifact(ctx, snapshotPath) : undefined;
 
@@ -915,7 +927,7 @@ export function registerPlaywright(pi: ExtensionAPI, runtime: BrowserRuntime): v
   pi.registerTool({
     name: "playwright",
     label: "Playwright",
-    description: `Use the official playwright-cli for browser interaction, workflows, and accessibility snapshots. Prefer snapshot refs and refresh them after page-changing actions. Browser coordinates routing and stores artifacts outside the repository.`,
+    description: `Use the official playwright-cli for browser interaction, workflows, and accessibility snapshots. Reuse snapshots returned by page-changing actions rather than requesting a duplicate; use find or scoped/depth-limited snapshots for large pages. Batch known workflows with run_code, wait for observable conditions, and throw on failed checks. Prefer snapshot refs for exploration and stable locators inside batches. Browser coordinates routing and stores artifacts outside the repository.`,
     parameters: playwrightParameters,
     executionMode: "sequential",
     async execute(toolCallId, params, signal, _onUpdate, ctx) {

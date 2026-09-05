@@ -123,12 +123,15 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     if (patch.lastBackend !== undefined) next.lastBackend = patch.lastBackend;
     if (patch.lastReportId !== undefined) next.lastReportId = patch.lastReportId;
     if (patch.playwrightAttached !== undefined) next.playwrightAttached = patch.playwrightAttached;
+    if (patch.chromeDevtoolsPid === null) delete next.chromeDevtoolsPid;
+    else if (patch.chromeDevtoolsPid !== undefined) next.chromeDevtoolsPid = patch.chromeDevtoolsPid;
     if (patch.sharedCdpEndpoint === null) {
       delete next.sharedCdpEndpoint;
       next.playwrightAttached = false;
     } else if (patch.sharedCdpEndpoint !== undefined) {
       next.sharedCdpEndpoint = validateLocalCdpEndpoint(patch.sharedCdpEndpoint);
     }
+    if (next.sharedCdpEndpoint !== current.sharedCdpEndpoint) delete next.chromeDevtoolsPid;
     this.states.set(key, next);
     return {...next};
   }
@@ -162,15 +165,15 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
   }
 
   async allocateFile(ctx: ExtensionContext, backend: BrowserBackend | "browser", name: string, kind?: Parameters<BrowserRuntime["record"]>[3]): Promise<string> {
-    return this.store.allocateFile(await this.ensure(ctx), backend, name, kind);
+    return this.store.allocateFile(await this.workspace(ctx), backend, name, kind);
   }
 
   async allocateDirectory(ctx: ExtensionContext, backend: BrowserBackend | "browser", name: string): Promise<string> {
-    return this.store.allocateDirectory(await this.ensure(ctx), backend, name);
+    return this.store.allocateDirectory(await this.workspace(ctx), backend, name);
   }
 
   async output(ctx: ExtensionContext, input: string, options?: {maxBytes?: number; maxLines?: number; prefix?: string} & BrowserRecordOptions) {
-    return this.store.output(await this.ensure(ctx), redactSecrets(input), options);
+    return this.store.output(await this.workspace(ctx), redactSecrets(input), options);
   }
 
   async record(
@@ -180,7 +183,7 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     kind?: Parameters<BrowserRuntime["record"]>[3],
     options?: Parameters<BrowserRuntime["record"]>[4],
   ) {
-    return this.store.record(await this.ensure(ctx), backend, paths, kind, options);
+    return this.store.record(await this.workspace(ctx), backend, paths, kind, options);
   }
 
   async recordEvidence(ctx: ExtensionContext, input: BrowserEvidenceInput): Promise<BrowserEvidence> {
@@ -211,7 +214,7 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
   }
 
   async readArtifact(ctx: ExtensionContext, artifactPath: string): Promise<string | undefined> {
-    return this.store.read(await this.ensure(ctx), artifactPath);
+    return this.store.read(await this.workspace(ctx), artifactPath);
   }
 
   private async closeWorkspace(pi: ExtensionAPI, workspace: BrowserWorkspace, current: BrowserState): Promise<BrowserCloseResult> {
@@ -318,7 +321,7 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
   }
 
   async manifest(ctx: ExtensionContext) {
-    return this.store.list(await this.ensure(ctx));
+    return this.store.list(await this.workspace(ctx));
   }
 
   async configPath(ctx: ExtensionContext): Promise<string> {

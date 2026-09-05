@@ -201,9 +201,24 @@ function contentType(path: string): string | undefined {
 
 export class BrowserArtifactStore {
   private readonly manifestWrites = new Map<string, Promise<void>>();
+  private readonly initialized = new Map<string, Promise<void>>();
 
   async ensure(workspace: BrowserWorkspace): Promise<void> {
-    await ensureWorkspaceDirectories(workspace);
+    let initialization = this.initialized.get(workspace.root);
+    if (!initialization) {
+      initialization = ensureWorkspaceDirectories(workspace).catch(error => {
+        this.initialized.delete(workspace.root);
+        throw error;
+      });
+      this.initialized.set(workspace.root, initialization);
+    }
+    await initialization;
+    // Cache mkdir/chmod, never trust a cached path: an ancestor can be replaced
+    // between operations. Individual reads/writes also validate their target.
+    await assertNoSymlinkComponents(dirname(dirname(rootPath())), workspace.root);
+    for (const directory of [workspace.outputDir, workspace.playwrightDir, workspace.devtoolsDir, workspace.lighthouseDir, workspace.reportsDir, workspace.cacheDir]) {
+      await assertNoSymlinkComponents(workspace.root, directory);
+    }
   }
 
   async allocateFile(
@@ -246,6 +261,7 @@ export class BrowserArtifactStore {
     fallbackKind: BrowserArtifactKind = "other",
     options: BrowserRecordOptions = {},
   ): Promise<BrowserArtifact[]> {
+    if (paths.length === 0) return [];
     await this.ensure(workspace);
     const manifestKey = workspace.manifestPath;
     const previous = this.manifestWrites.get(manifestKey) ?? Promise.resolve();
@@ -314,6 +330,7 @@ export class BrowserArtifactStore {
 
   async list(workspace: BrowserWorkspace): Promise<BrowserManifest> {
     await this.ensure(workspace);
+    await this.manifestWrites.get(workspace.manifestPath);
     return loadManifest(workspace);
   }
 
@@ -322,7 +339,6 @@ export class BrowserArtifactStore {
     input: string,
     options: { maxBytes?: number; maxLines?: number; prefix?: string } & BrowserRecordOptions = {},
   ): Promise<{ text: string; fullOutputPath?: string; truncated: boolean }> {
-    await this.ensure(workspace);
     const truncation = truncateHead(input, {
       maxBytes: options.maxBytes ?? DEFAULT_MAX_BYTES,
       maxLines: options.maxLines ?? DEFAULT_MAX_LINES,
@@ -344,6 +360,7 @@ export class BrowserArtifactStore {
     const path = resolve(workspace.root, candidate);
     if (!isContained(workspace.root, path)) return undefined;
     try {
+      await this.ensure(workspace);
       await assertNoSymlinkEscape(workspace.root, path);
       return redactSecrets(await readFile(path, "utf8"));
     } catch {
@@ -356,10 +373,15 @@ export class BrowserArtifactStore {
     const target = resolve(workspace.root);
     assertContained(root, target, "cleanup path");
     await assertNoSymlinkComponents(dirname(dirname(root)), root);
-    if (!(await pathExists(target))) return [];
-    await assertNoSymlinkEscape(root, target);
-    await rm(target, {recursive: true, force: true});
-    return [target];
+    await this.manifestWrites.get(workspace.manifestPath);
+    const existed = await pathExists(target);
+    if (existed) {
+      await assertNoSymlinkEscape(root, target);
+      await rm(target, {recursive: true, force: true});
+    }
+    this.initialized.delete(workspace.root);
+    this.manifestWrites.delete(workspace.manifestPath);
+    return existed ? [target] : [];
   }
 
   static formatManifest(manifest: BrowserManifest): string {

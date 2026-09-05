@@ -73,7 +73,7 @@ export async function composeReport(
     ? allEvidence.filter(item => item.artifactIds.includes(artifactId) || item.reportId === artifactId)
     : allEvidence;
 
-  const markdownBody = [
+  const markdownBody = () => [
     "# Browser report",
     "",
     `- Project: \`${workspace.cwd}\``,
@@ -87,7 +87,7 @@ export async function composeReport(
     ...artifacts.map(artifactMarkdown),
   ].join("\n");
 
-  const jsonBody = `${JSON.stringify({
+  const jsonBody = () => `${JSON.stringify({
     version: 1,
     cwd: workspace.cwd,
     piSessionId: workspace.piSessionId,
@@ -97,9 +97,11 @@ export async function composeReport(
     artifacts,
   }, null, 2)}\n`;
 
-  const htmlArtifacts = artifacts.map(artifact => `<li><strong>${escapeHtml(`${artifact.backend}: ${artifact.kind}`)}</strong><br>ID: <code>${escapeHtml(artifact.id)}</code><br>Path: <code>${escapeHtml(artifact.path)}</code><br>Size: ${artifact.bytes ?? 0} bytes<br>SHA-256: <code>${escapeHtml(artifact.sha256 ?? "unavailable")}</code>${artifact.correlationId ? `<br>Correlation: <code>${escapeHtml(artifact.correlationId)}</code>` : ""}</li>`).join("\n");
-  const htmlBody = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>Browser report</title></head><body><h1>Browser report</h1><p>Project: <code>${escapeHtml(workspace.cwd)}</code></p><p>Pi session: <code>${escapeHtml(workspace.piSessionId)}</code></p><p>Runtime: <code>${escapeHtml(workspace.runtimeId)}</code></p>${evidence.length ? `<h2>Findings</h2>${evidence.map(evidenceHtml).join("\n")}` : "<p>No normalized Browser findings have been recorded.</p>"}${artifacts.length ? `<h2>Evidence files</h2><ul>${htmlArtifacts}</ul>` : "<p>No Browser artifact files have been recorded.</p>"}</body></html>\n`;
-  const body = format === "json" ? jsonBody : format === "html" ? htmlBody : markdownBody;
+  const htmlBody = () => {
+    const htmlArtifacts = artifacts.map(artifact => `<li><strong>${escapeHtml(`${artifact.backend}: ${artifact.kind}`)}</strong><br>ID: <code>${escapeHtml(artifact.id)}</code><br>Path: <code>${escapeHtml(artifact.path)}</code><br>Size: ${artifact.bytes ?? 0} bytes<br>SHA-256: <code>${escapeHtml(artifact.sha256 ?? "unavailable")}</code>${artifact.correlationId ? `<br>Correlation: <code>${escapeHtml(artifact.correlationId)}</code>` : ""}</li>`).join("\n");
+    return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>Browser report</title></head><body><h1>Browser report</h1><p>Project: <code>${escapeHtml(workspace.cwd)}</code></p><p>Pi session: <code>${escapeHtml(workspace.piSessionId)}</code></p><p>Runtime: <code>${escapeHtml(workspace.runtimeId)}</code></p>${evidence.length ? `<h2>Findings</h2>${evidence.map(evidenceHtml).join("\n")}` : "<p>No normalized Browser findings have been recorded.</p>"}${artifacts.length ? `<h2>Evidence files</h2><ul>${htmlArtifacts}</ul>` : "<p>No Browser artifact files have been recorded.</p>"}</body></html>\n`;
+  };
+  const body = format === "json" ? jsonBody() : format === "html" ? htmlBody() : markdownBody();
   const extension = format === "json" ? "json" : format === "html" ? "html" : "md";
   const path = await runtime.allocateFile(ctx, "browser", `browser-report-${Date.now()}.${extension}`, "report");
   await withFileMutationQueue(path, () => writeFile(path, body, {encoding: "utf8", mode: 0o600}));
