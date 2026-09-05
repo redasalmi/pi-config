@@ -1,6 +1,6 @@
-import type { Model } from "@earendil-works/pi-ai";
-
 export type UsageWindow = {
+  /** Local observation time in milliseconds; not a provider reset timestamp. */
+  observedAt?: number;
   used_percent: number;
   limit_window_seconds?: number;
   reset_after_seconds?: number;
@@ -75,6 +75,7 @@ export type UsageResponse = {
 };
 
 export type RateLimitSnapshot = {
+  observedAt?: number;
   limitId: string;
   limitName?: string;
   primary?: UsageWindow | null;
@@ -95,15 +96,28 @@ export type Preset = {
   tools?: string[];
   instructions?: string;
   description?: string;
+  serviceTier?: string | null;
 };
 
 export type PresetsConfig = Record<string, Preset>;
 
 export type OriginalState = {
-  model: Model<any> | undefined;
+  model?: { provider: string; id: string };
   thinkingLevel: ThinkingLevel;
   tools: string[];
+  serviceTier?: string | null;
 };
+
+export type PresetSessionState = {
+  version: 2;
+  name: string | null;
+  original?: OriginalState;
+  tools: string[];
+  serviceTier: string | null;
+};
+
+export type PlanStep = { step: string; status: "pending" | "in_progress" | "completed" };
+export type PlanState = { mode: "off" | "planning" | "executing"; steps: PlanStep[] };
 
 export type StatuslineItem =
   | "preset"
@@ -126,17 +140,23 @@ export type CodexDefaults = {
   preset?: string | null;
   serviceTier?: string | null;
   statusline?: StatuslineItem[];
+  quotaWarnings?: boolean;
 };
 
 export type CodexState = {
   snapshots: Map<string, RateLimitSnapshot>;
   resetCreditCount: number | undefined;
   lastAttempt: number;
+  accountObservedAt: number;
   refreshGeneration: number;
   refreshPromise: Promise<boolean> | undefined;
   refreshAbortController: AbortController | undefined;
   statusStale: boolean;
   presets: PresetsConfig;
+  presetSources: Record<string, string>;
+  presetSelectionSource: string;
+  plan: PlanState;
+  quotaWarnings: boolean;
   activePresetName: string | undefined;
   activePreset: Preset | undefined;
   originalState: OriginalState | undefined;

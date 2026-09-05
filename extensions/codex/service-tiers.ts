@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
@@ -20,33 +20,36 @@ function firstServiceTierValue(value: Record<string, unknown>): unknown {
   return undefined;
 }
 
-function readCatalogServiceTierValue(model: Model<any>): unknown {
-  const paths = [join(getAgentDir(), "models-store.json"), join(getAgentDir(), "models.json")];
-  for (const path of paths) {
-    try {
-      const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-      if (!isRecord(parsed)) continue;
-      const providerValue = parsed[model.provider];
-      const provider = isRecord(providerValue)
-        ? providerValue
-        : isRecord(parsed.providers) && isRecord(parsed.providers[model.provider])
-          ? parsed.providers[model.provider]
-          : undefined;
-      const modelsValue = isRecord(provider) ? provider.models : undefined;
-      const models: unknown[] = Array.isArray(modelsValue) ? modelsValue : [];
-      const match = models.find((value: unknown) => isRecord(value) && value.id === model.id);
-      if (isRecord(match)) return firstServiceTierValue(match);
-    } catch {
-      // A missing or malformed optional catalog must not disable normal model use.
-    }
-  }
-  return undefined;
-}
+let catalog = new Map<string, ServiceTier[]>();
+let modelCache = new WeakMap<Model<any>, { raw: unknown; tiers: ServiceTier[] }>();
+let catalogGeneration = 0;
 
-function readServiceTierValue(model: Model<any>): unknown {
-  const rawModel = model as ModelWithServiceTiers;
-  const direct = firstServiceTierValue(rawModel as unknown as Record<string, unknown>);
-  return direct !== undefined ? direct : readCatalogServiceTierValue(model);
+// Only session/model/command hooks do I/O. Rendering and request hooks use memory.
+// Retain tier metadata only, never the complete models.json (which may contain auth).
+export async function refreshServiceTierCatalog(
+  paths = [join(getAgentDir(), "models-store.json"), join(getAgentDir(), "models.json")],
+): Promise<void> {
+  const generation = ++catalogGeneration;
+  const layers = await Promise.all(paths.map(async (path) => {
+    const tiers = new Map<string, ServiceTier[]>();
+    try {
+      const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+      if (!isRecord(parsed)) return tiers;
+      const provider = parsed[PROVIDER] ?? (isRecord(parsed.providers) ? parsed.providers[PROVIDER] : undefined);
+      if (!isRecord(provider) || !Array.isArray(provider.models)) return tiers;
+      for (const model of provider.models) {
+        if (!isRecord(model) || typeof model.id !== "string") continue;
+        const raw = firstServiceTierValue(model);
+        if (raw !== undefined) tiers.set(model.id, normalizeTiers(raw));
+      }
+    } catch {
+      // Optional catalog absent or malformed: keep normal routing available.
+    }
+    return tiers;
+  }));
+  if (generation !== catalogGeneration) return;
+  catalog = new Map(layers.flatMap((layer) => [...layer]));
+  modelCache = new WeakMap();
 }
 
 function displayName(id: string): string {
@@ -98,10 +101,13 @@ function normalizeTiers(raw: unknown): ServiceTier[] {
 
 export function parseServiceTiers(model: Model<any> | undefined): ServiceTier[] {
   if (!model || model.provider !== PROVIDER) return [];
-  const raw = readServiceTierValue(model);
-  // Tier support is model-specific. Missing metadata means unsupported; inferring
-  // support from a model family can inject a routing value the model never advertised.
-  return raw === undefined ? [] : normalizeTiers(raw);
+  const raw = firstServiceTierValue(model as ModelWithServiceTiers as unknown as Record<string, unknown>);
+  const cached = modelCache.get(model);
+  if (cached && cached.raw === raw) return cached.tiers;
+  // Missing metadata means unsupported; never infer support from a model family.
+  const tiers = raw === undefined ? catalog.get(model.id) ?? [] : normalizeTiers(raw);
+  modelCache.set(model, { raw, tiers });
+  return tiers;
 }
 
 export function findServiceTier(model: Model<any> | undefined, requested: string | undefined): ServiceTier | undefined {

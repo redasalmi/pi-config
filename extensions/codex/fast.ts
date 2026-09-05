@@ -1,48 +1,36 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { CodexState, ServiceTier } from "./types.ts";
+import type { CodexState } from "./types.ts";
 import { writeStoredServiceTier } from "./storage.ts";
-import { describeServiceTiers, findServiceTier } from "./service-tiers.ts";
+import { describeServiceTiers, findServiceTier, refreshServiceTierCatalog } from "./service-tiers.ts";
 import { notify } from "./utils.ts";
 
 type ServiceTierDeps = {
   renderStatus: (ctx: ExtensionContext) => boolean;
+  persistSession: (ctx: ExtensionContext) => void;
 };
 
-export function createServiceTier(pi: ExtensionAPI, state: CodexState, deps: ServiceTierDeps) {
-  function setServiceTier(ctx: ExtensionContext, tier: ServiceTier | undefined, persist: boolean): void {
-    state.selectedServiceTier = tier?.id;
-    if (persist) writeStoredServiceTier(state.selectedServiceTier ?? null);
-    deps.renderStatus(ctx);
-  }
-
+export function createServiceTier(pi: ExtensionAPI, state: CodexState, deps: ServiceTierDeps): void {
   pi.registerCommand("tier", {
-    description: "Select a model-advertised Codex service tier",
+    description: "Select a session service tier; /tier save NAME saves a startup default",
     handler: async (args, ctx) => {
-      if (!ctx.isIdle()) {
-        notify(ctx, "Wait for the current task to finish before changing the service tier", "warning");
+      if (!ctx.isIdle()) { notify(ctx, "Wait for the current task to finish before changing the service tier", "warning"); return; }
+      await refreshServiceTierCatalog();
+      const trimmed = args.trim();
+      const save = trimmed.startsWith("save ");
+      const name = save ? trimmed.slice(5).trim() : trimmed;
+      if (!name) { notify(ctx, `Current tier: ${state.selectedServiceTier ?? "standard"}\nAvailable: ${describeServiceTiers(ctx)}\nUsage: /tier NAME|off | /tier save NAME|off`); return; }
+      const standard = ["off", "standard", "default"].includes(name.toLowerCase());
+      const tier = standard ? undefined : findServiceTier(ctx.model, name);
+      if (!standard && !tier) { notify(ctx, `Unknown or unsupported service tier "${name}". Available: ${describeServiceTiers(ctx)}`, "error"); return; }
+      if (save) {
+        writeStoredServiceTier(tier?.id ?? null);
+        notify(ctx, `Startup service tier: ${tier?.name ?? "standard"}. Current session unchanged.`);
         return;
       }
-
-      const name = args.trim();
-      if (!name) {
-        notify(ctx, `Available tiers: ${describeServiceTiers(ctx)}`);
-        return;
-      }
-      const normalizedName = name.toLowerCase();
-      if (normalizedName === "off" || normalizedName === "standard" || normalizedName === "default") {
-        setServiceTier(ctx, undefined, true);
-        notify(ctx, "Codex service tier cleared; standard routing will be used");
-        return;
-      }
-      const tier = findServiceTier(ctx.model, name);
-      if (!tier) {
-        notify(ctx, `Unknown or unsupported service tier "${name}". Available: ${describeServiceTiers(ctx)}`, "error");
-        return;
-      }
-      setServiceTier(ctx, tier, true);
-      notify(ctx, `Codex service tier: ${tier.name} (${tier.id})`);
+      state.selectedServiceTier = tier?.id;
+      deps.persistSession(ctx);
+      deps.renderStatus(ctx);
+      notify(ctx, `Session service tier: ${tier ? `${tier.name} (${tier.id})` : "standard"}`);
     },
   });
-
-  return { setServiceTier };
 }

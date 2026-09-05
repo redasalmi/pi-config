@@ -15,18 +15,26 @@ import {
   RESET_CREDITS_PATH,
   STATUS_KEY,
   TOKEN_USAGE_PATH,
+  TOKEN_USAGE_CACHE_MS,
   USAGE_PATH,
 } from "./constants.ts";
 import {
   formatTokens,
+  renderCredits,
+  renderIndividualLimit,
+  renderWindow,
   getAccountId,
   getHeader,
   isRecord,
+  itemLabel,
   notify,
 } from "./utils.ts";
 
+import { writeCodexDefaults } from "./storage.ts";
+
 type UsageDeps = {
   renderStatus: (ctx: ExtensionContext) => boolean;
+  observeQuota: (ctx: ExtensionContext, snapshots: Iterable<RateLimitSnapshot>) => void;
 };
 
 function normalizeLimitId(value: string): string {
@@ -83,6 +91,18 @@ export function snapshotsFromUsage(usage: UsageResponse): Map<string, RateLimitS
   }
   const resetCredits = usage.rate_limit_reset_credits?.credits ?? undefined;
   if (resetCredits) primary.resetCredits = resetCredits;
+  const now = Date.now();
+  for (const snapshot of snapshots.values()) {
+    snapshot.observedAt = now;
+    for (const window of [snapshot.primary, snapshot.secondary]) {
+      if (window) window.observedAt = now;
+    }
+    for (const window of [snapshot.primary, snapshot.secondary, snapshot.individualLimit]) {
+      if (window && window.reset_at === undefined && window.reset_after_seconds !== undefined) {
+        window.reset_at = Math.floor(now / 1000) + window.reset_after_seconds;
+      }
+    }
+  }
   return snapshots;
 }
 
@@ -119,6 +139,7 @@ function windowFromHeaders(
   if (!hasData) return null;
 
   return {
+    observedAt: Date.now(),
     used_percent: used,
     limit_window_seconds: windowMinutes === undefined ? undefined : windowMinutes * 60,
     reset_at: resetAt,
@@ -152,6 +173,7 @@ export function snapshotsFromHeaders(rawHeaders: Record<string, string> | undefi
 
     if (primary === undefined && secondary === undefined && !credits) continue;
     snapshots.push({
+      observedAt: Date.now(),
       limitId: normalizeLimitId(rawLimitId),
       limitName: headers.get(`${prefix}-limit-name`),
       primary,
@@ -169,6 +191,7 @@ function mergeWindow(
   if (update === null) return undefined;
   if (update === undefined) return current ?? undefined;
   return {
+    observedAt: update.observedAt,
     used_percent: update.used_percent,
     limit_window_seconds: update.limit_window_seconds ?? current?.limit_window_seconds,
     reset_after_seconds: update.reset_after_seconds ?? current?.reset_after_seconds,
@@ -216,7 +239,31 @@ function getBuckets(stats: TokenUsageProfile["stats"]): Array<{ date: string; to
   });
 }
 
+export function redemptionOutcome(result: unknown): string {
+  return isRecord(result) && typeof (result.code ?? result.outcome) === "string"
+    ? String(result.code ?? result.outcome)
+    : "unrecognized response";
+}
+
 export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps) {
+  let auxiliaryAbort = new AbortController();
+  let tokenPromise: Promise<boolean> | undefined;
+  let tokenObservedAt = 0;
+  let gitPromise: Promise<void> | undefined;
+  let gitObservedAt = 0;
+
+  function cancelAll(): void {
+    cancelRefresh();
+    auxiliaryAbort.abort();
+    auxiliaryAbort = new AbortController();
+    tokenPromise = undefined;
+    tokenObservedAt = 0;
+    gitPromise = undefined;
+    gitObservedAt = 0;
+    state.tokenUsage = undefined;
+  }
+
+  function lifetimeSignal(): AbortSignal { return auxiliaryAbort.signal; }
   function cancelRefresh(): void {
     state.refreshGeneration++;
     state.refreshAbortController?.abort();
@@ -230,7 +277,8 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       state.snapshots.clear();
       state.resetCreditCount = undefined;
       state.statusStale = false;
-      ctx.ui.setStatus(STATUS_KEY, undefined);
+      state.accountObservedAt = 0;
+      deps.renderStatus(ctx);
       return false;
     }
     if (state.refreshPromise) return state.refreshPromise;
@@ -282,6 +330,8 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
         state.snapshots = snapshots;
         state.resetCreditCount = resetCreditCount;
         state.statusStale = false;
+        state.accountObservedAt = Date.now();
+        deps.observeQuota(ctx, snapshots.values());
         deps.renderStatus(ctx);
         return true;
       } catch (error) {
@@ -313,42 +363,59 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     })();
   }
 
-  async function refreshTokenUsage(ctx: ExtensionContext): Promise<boolean> {
+  async function refreshTokenUsage(ctx: ExtensionContext, force = false): Promise<boolean> {
     if (ctx.model?.provider !== PROVIDER) return false;
-    try {
-      const auth = await ctx.modelRegistry.getProviderAuth(PROVIDER);
-      const apiKey = auth?.auth.apiKey;
-      if (!apiKey) throw new Error("No access token");
-      const accountId = getHeader(auth?.auth.headers, "chatgpt-account-id") ?? getAccountId(apiKey);
-      const baseUrl = ctx.model?.baseUrl?.replace(/\/$/, "") || "https://chatgpt.com/backend-api";
-      const response = await fetch(`${baseUrl}${TOKEN_USAGE_PATH}`, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          ...(accountId ? { "ChatGPT-Account-Id": accountId } : {}),
-        },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      state.tokenUsage = (await response.json()) as TokenUsageProfile;
-      return true;
-    } catch (error) {
-      console.error(`Codex token usage refresh failed: ${error instanceof Error ? error.message : String(error)}`);
-      return false;
-    }
+    if (tokenPromise) return tokenPromise;
+    if (!force && state.tokenUsage && Date.now() - tokenObservedAt < TOKEN_USAGE_CACHE_MS) return true;
+    const signal = auxiliaryAbort.signal;
+    const promise = (async () => {
+      try {
+        const result = await backendRequest(ctx, TOKEN_USAGE_PATH, { signal });
+        if (signal.aborted) return false;
+        if (!isRecord(result) || !isRecord(result.stats)) throw new Error("No token activity data returned");
+        state.tokenUsage = result as TokenUsageProfile;
+        tokenObservedAt = Date.now();
+        return true;
+      } catch (error) {
+        if (!signal.aborted) console.error(`Codex token usage refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+      }
+    })();
+    tokenPromise = promise;
+    try { return await promise; }
+    finally { if (tokenPromise === promise) tokenPromise = undefined; }
   }
 
-  async function loadGitBranch(ctx: ExtensionContext): Promise<void> {
-    const result = await pi.exec("git", ["branch", "--show-current"], { cwd: ctx.cwd, timeout: 5_000 });
-    state.gitBranch = result.code === 0 ? result.stdout.trim() || "detached" : undefined;
+  async function loadGitBranch(ctx: ExtensionContext, force = false): Promise<void> {
+    if (gitPromise) return gitPromise;
+    if (!force && Date.now() - gitObservedAt < 5_000) return;
+    const signal = auxiliaryAbort.signal;
+    const promise = (async () => {
+      try {
+        const result = await pi.exec("git", ["branch", "--show-current"], { cwd: ctx.cwd, timeout: 5_000, signal });
+        if (signal.aborted) return;
+        state.gitBranch = result.code === 0 ? result.stdout.trim() || "detached" : undefined;
+        gitObservedAt = Date.now();
+        deps.renderStatus(ctx);
+      } catch {
+        if (!signal.aborted) state.gitBranch = undefined;
+      }
+    })();
+    gitPromise = promise;
+    try { await promise; }
+    finally { if (gitPromise === promise) gitPromise = undefined; }
   }
 
   async function backendRequest(ctx: ExtensionContext, path: string, init?: RequestInit): Promise<unknown> {
+    if (ctx.model?.provider !== PROVIDER) throw new Error("Select a ChatGPT Codex model first");
+    const signal = AbortSignal.any([auxiliaryAbort.signal, ...(init?.signal ? [init.signal] : []), AbortSignal.timeout(10_000)]);
     const auth = await ctx.modelRegistry.getProviderAuth(PROVIDER);
     const apiKey = auth?.auth.apiKey;
     if (!apiKey) throw new Error("No ChatGPT Codex access token");
     const accountId = getHeader(auth?.auth.headers, "chatgpt-account-id") ?? getAccountId(apiKey);
     const fedramp = getHeader(auth?.auth.headers, "x-openai-fedramp");
     const baseUrl = ctx.model?.baseUrl?.replace(/\/$/, "") || "https://chatgpt.com/backend-api";
+    signal.throwIfAborted();
     const headers = new Headers(init?.headers);
     headers.set("Authorization", `Bearer ${apiKey}`);
     if (accountId) headers.set("ChatGPT-Account-Id", accountId);
@@ -357,7 +424,7 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     const response = await fetch(`${baseUrl}${path}`, {
       ...init,
       headers,
-      signal: init?.signal ?? AbortSignal.timeout(10_000),
+      signal,
     });
     const text = await response.text();
     let body: unknown;
@@ -438,7 +505,9 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
   }
 
   async function showTokenActivity(ctx: ExtensionContext, view: "daily" | "weekly" | "cumulative"): Promise<void> {
+    const signal = lifetimeSignal();
     const loaded = await refreshTokenUsage(ctx);
+    if (signal.aborted) return;
     if (!loaded) {
       notify(ctx, "Token activity unavailable; sign in with ChatGPT Codex auth and retry /usage", "error");
       return;
@@ -451,16 +520,19 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       notify(ctx, "Redeeming a usage limit reset requires an interactive TUI or RPC client for confirmation", "error");
       return;
     }
+    const signal = lifetimeSignal();
     if (state.resetCreditCount === undefined) await refresh(ctx, true);
+    if (signal.aborted) return;
     let credits = normalizeResetCredits({ credits: state.snapshots.get("codex")?.resetCredits ?? [] });
     if (credits.length === 0 && state.resetCreditCount !== undefined && state.resetCreditCount > 0) {
       try {
         credits = normalizeResetCredits(await backendRequest(ctx, RESET_CREDITS_PATH));
       } catch (error) {
-        notify(ctx, `Could not load usage limit resets: ${error instanceof Error ? error.message : String(error)}`, "error");
+        if (!signal.aborted) notify(ctx, `Could not load usage limit resets: ${error instanceof Error ? error.message : String(error)}`, "error");
         return;
       }
     }
+    if (signal.aborted) return;
     if (credits.length === 0 && (state.resetCreditCount ?? 0) <= 0) {
       notify(ctx, "No usage limit resets are currently available", "info");
       return;
@@ -474,21 +546,22 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
           )
         : ["Use the next available usage limit reset"];
     options.push("Cancel");
-    const selected = await ctx.ui.select("Redeem usage limit reset", options);
-    if (!selected || selected === "Cancel") return;
+    const selected = await ctx.ui.select("Redeem usage limit reset", options, { signal });
+    if (signal.aborted || !selected || selected === "Cancel") return;
     const selectedIndex = options.indexOf(selected);
     const credit = credits[selectedIndex];
     const expires = credit?.expires_at ?? credit?.expiresAt ?? undefined;
     const detail = credit
       ? `${credit.title || "Usage limit reset"}${expires ? `, expires ${formatDate(expires)}` : ""}`
       : "the next available usage limit reset";
-    if (!(await ctx.ui.confirm("Confirm usage limit reset", `Redeem ${detail}? This consumes one saved reset.`))) return;
+    if (!(await ctx.ui.confirm("Confirm usage limit reset", `Redeem ${detail}? This consumes one saved reset.`, { signal })) || signal.aborted) return;
 
     const idempotencyKey = randomUUID();
     const body = { credit_id: credit?.id, redeem_request_id: idempotencyKey };
     try {
       const result = await backendRequest(ctx, `${RESET_CREDITS_PATH}/consume`, { method: "POST", body: JSON.stringify(body) });
-      const outcome = isRecord(result) ? String(result.code ?? result.outcome ?? "reset") : "reset";
+      if (signal.aborted) return;
+      const outcome = redemptionOutcome(result);
       if (!["reset", "success"].includes(outcome)) {
         notify(ctx, `Usage limit reset was not applied: ${outcome}`, "warning");
         return;
@@ -496,23 +569,43 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       notify(ctx, "Usage limit reset redeemed; refreshing limits", "info");
       await refresh(ctx, true);
     } catch (error) {
-      const retry = await ctx.ui.confirm("Reset redemption failed", "Retry the same request safely?");
+      if (signal.aborted) return;
+      const retry = await ctx.ui.confirm("Reset redemption failed", "Retry the same request safely?", { signal });
+      if (signal.aborted) return;
       if (!retry) {
         notify(ctx, `Could not redeem usage limit reset: ${error instanceof Error ? error.message : String(error)}`, "error");
         return;
       }
       try {
-        await backendRequest(ctx, `${RESET_CREDITS_PATH}/consume`, { method: "POST", body: JSON.stringify(body) });
+        const result = await backendRequest(ctx, `${RESET_CREDITS_PATH}/consume`, { method: "POST", body: JSON.stringify(body) });
+        if (signal.aborted) return;
+        const outcome = redemptionOutcome(result);
+        if (!["reset", "success"].includes(outcome)) {
+          notify(ctx, `Usage limit reset was not applied: ${outcome}`, "warning");
+          return;
+        }
         notify(ctx, "Usage limit reset redeemed; refreshing limits", "info");
         await refresh(ctx, true);
       } catch (retryError) {
-        notify(ctx, `Could not redeem usage limit reset: ${retryError instanceof Error ? retryError.message : String(retryError)}`, "error");
+        if (!signal.aborted) notify(ctx, `Could not redeem usage limit reset: ${retryError instanceof Error ? retryError.message : String(retryError)}`, "error");
       }
     }
   }
 
   async function handleUsageCommand(args: string, ctx: ExtensionContext): Promise<void> {
     const view = args.trim().toLowerCase();
+    if (view.startsWith("warnings")) {
+      if (view !== "warnings on" && view !== "warnings off") {
+        notify(ctx, `Quota warnings: ${state.quotaWarnings ? "on" : "off"}. Usage: /usage warnings on|off`);
+        return;
+      }
+      state.quotaWarnings = view === "warnings on";
+      writeCodexDefaults({ quotaWarnings: state.quotaWarnings });
+      notify(ctx, `Quota warnings ${state.quotaWarnings ? "enabled" : "disabled"}`);
+      return;
+    }
+    if (ctx.model?.provider !== PROVIDER) { notify(ctx, "Select a ChatGPT Codex model to view account usage", "error"); return; }
+    if (view === "limits") { await showLimits(ctx); return; }
     if (["daily", "weekly", "cumulative"].includes(view)) {
       await showTokenActivity(ctx, view as "daily" | "weekly" | "cumulative");
       return;
@@ -538,15 +631,42 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     ]);
     if (!selected) return;
     if (selected === "Rate limits") {
-      const updated = await refresh(ctx, true);
-      notify(ctx, updated ? "Subscription rate limits refreshed" : "Could not load subscription rate limits", updated ? "info" : "error");
+      await showLimits(ctx);
     } else if (selected === "Daily token activity") await showTokenActivity(ctx, "daily");
     else if (selected === "Weekly token activity") await showTokenActivity(ctx, "weekly");
     else if (selected === "Cumulative token activity") await showTokenActivity(ctx, "cumulative");
     else await showResetCredits(ctx);
   }
 
+  function limitsText(ctx: ExtensionContext): string {
+    const lines: string[] = [];
+    for (const snapshot of state.snapshots.values()) {
+      const label = formatLimitName(snapshot);
+      if (snapshot.primary) lines.push(renderWindow(ctx, snapshot.primary, "primary", label));
+      if (snapshot.secondary) lines.push(renderWindow(ctx, snapshot.secondary, "secondary", label));
+      if (snapshot.credits) lines.push(renderCredits(ctx, snapshot.credits) ?? "");
+      if (snapshot.individualLimit) lines.push(renderIndividualLimit(ctx, snapshot.individualLimit) ?? "");
+      if (snapshot.spendControlReached || snapshot.rateLimitReachedType) {
+        lines.push(`${ctx.ui.theme.fg("mdLink", "Limit reached:")} ${ctx.ui.theme.fg("error", snapshot.rateLimitReachedType ?? "spend control")}`);
+      }
+    }
+    if (state.resetCreditCount !== undefined) lines.push(itemLabel(ctx, "Reset credits", String(state.resetCreditCount)));
+    const observedAt = state.accountObservedAt ? new Date(state.accountObservedAt).toLocaleTimeString() : "unavailable";
+    const staleNote = state.statusStale ? ctx.ui.theme.fg("dim", " (refresh failed; cached)") : "";
+    lines.push(`${itemLabel(ctx, "Full account data", observedAt)}${staleNote}`);
+    return lines.filter(Boolean).join("\n");
+  }
+
+  async function showLimits(ctx: ExtensionContext): Promise<void> {
+    const signal = lifetimeSignal();
+    await refresh(ctx, true);
+    if (!signal.aborted) notify(ctx, limitsText(ctx));
+  }
+
   return {
+    cancelAll,
+    lifetimeSignal,
+    limitsText,
     cancelRefresh,
     refresh,
     scheduleRefresh,

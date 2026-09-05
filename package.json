@@ -18,7 +18,8 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "typecheck": "tsc --project extensions/tsconfig.json"
+    "typecheck": "tsc --project extensions/tsconfig.json",
+    "test:codex": "node --test extensions/codex/tests/*.test.ts"
   },
   "pi": {
     "extensions": [

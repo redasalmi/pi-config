@@ -31,6 +31,7 @@ export function readCodexDefaults(): CodexDefaults {
         ? { serviceTier: value.serviceTier }
         : {}),
       ...(statusline ? { statusline: [...new Set(statusline)] } : {}),
+      ...(typeof value.quotaWarnings === "boolean" ? { quotaWarnings: value.quotaWarnings } : {}),
     };
   } catch {
     return {};
@@ -60,6 +61,7 @@ export function isPreset(value: unknown): value is Preset {
   }
   if (value.instructions !== undefined && typeof value.instructions !== "string") return false;
   if (value.description !== undefined && typeof value.description !== "string") return false;
+  if (value.serviceTier !== undefined && value.serviceTier !== null && typeof value.serviceTier !== "string") return false;
   return (value.provider === undefined) === (value.model === undefined);
 }
 
@@ -70,7 +72,7 @@ function loadPresetFile(path: string): PresetsConfig {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
     if (!isRecord(parsed)) throw new Error("top-level value must be an object");
 
-    const presets: PresetsConfig = {};
+    const presets: PresetsConfig = Object.create(null);
     for (const [name, value] of Object.entries(parsed)) {
       if (!name.trim()) continue;
       if (!isPreset(value)) {
@@ -86,14 +88,26 @@ function loadPresetFile(path: string): PresetsConfig {
   }
 }
 
-export function loadPresets(cwd: string, projectTrusted: boolean): PresetsConfig {
+export function loadPresets(cwd: string, projectTrusted: boolean): {
+  presets: PresetsConfig;
+  sources: Record<string, string>;
+} {
   const globalPath = join(getAgentDir(), PRESETS_CONFIG_FILE);
   const projectPath = join(cwd, CONFIG_DIR_NAME, PRESETS_CONFIG_FILE);
-  return {
-    ...DEFAULT_PRESETS,
-    ...loadPresetFile(globalPath),
-    ...(projectTrusted ? loadPresetFile(projectPath) : {}),
-  };
+  const layers = [
+    { values: DEFAULT_PRESETS, source: "built-in" },
+    { values: loadPresetFile(globalPath), source: `global: ${globalPath}` },
+    { values: projectTrusted ? loadPresetFile(projectPath) : {}, source: `trusted project: ${projectPath}` },
+  ];
+  const presets: PresetsConfig = Object.create(null);
+  const sources: Record<string, string> = Object.create(null);
+  for (const { values, source } of layers) {
+    for (const [name, preset] of Object.entries(values)) {
+      presets[name] = preset;
+      sources[name] = source;
+    }
+  }
+  return { presets, sources };
 }
 
 export function readStoredPresetName(): string | null | undefined {

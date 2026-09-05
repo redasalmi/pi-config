@@ -2,7 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Credits, IndividualLimit, UsageWindow } from "./types.ts";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function notify(ctx: ExtensionContext, message: string, type: "info" | "warning" | "error" = "info"): void {

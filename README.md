@@ -49,6 +49,13 @@ The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
 `PATH` for the corresponding backends. These external CLIs are not installed by
 this package.
 
+## Codex workflow
+
+The [Codex extension](extensions/codex/README.md) adds session-scoped presets,
+service tiers, quota reporting, planning/checklists, and local diff/review commands.
+Use `/preset status` for configuration sources and `/status` for current state.
+Run its isolated regression tests with `npm run test:codex`.
+
 ## Notifications
 
 The Notify extension sends terminal notifications when an interactive run fully
