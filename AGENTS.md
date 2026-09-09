@@ -14,6 +14,7 @@
 - Inspect the relevant repository-local instructions, code, configuration, package scripts, and existing working-tree changes before editing.
 - Prefer the simplest correct solution that fully satisfies the request. Fix the root cause rather than hiding the symptom; do not trade correctness or maintainability for a smaller diff.
 - Write human-readable code with clear names and straightforward control flow. Prefer explicit, easy-to-understand code over clever tricks or compressed expressions.
+- Add comments only when necessary to explain non-obvious intent, constraints, or tradeoffs that clear code cannot convey, or to satisfy required documentation. Keep them brief and local. Do not restate obvious code, add decorative section banners, or routinely comment every function, block, or line.
 - Do not overengineer: avoid speculative features, premature optimization, and abstractions or configuration that the current task does not need.
 - Follow the existing architecture, patterns, naming, dependencies, formatting, package-manager, and error-handling conventions. Use a different approach only when the established approach cannot reasonably satisfy the request; explain why.
 - Make the smallest coherent change that achieves the goal. Preserve unrelated user changes and avoid opportunistic refactoring, cleanup, or formatting.
