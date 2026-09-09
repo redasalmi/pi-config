@@ -12,17 +12,20 @@
 ## Repository and implementation discipline
 
 - Inspect the relevant repository-local instructions, code, configuration, package scripts, and existing working-tree changes before editing.
-- Prefer the simplest clear solution that fully satisfies the request. Fix the root cause rather than hiding the symptom.
-- Follow the existing architecture, patterns, naming, dependencies, formatting, package-manager, and error-handling conventions.
-- Keep changes minimal, in scope, and easy to review. Preserve unrelated user changes and avoid opportunistic refactoring, cleanup, or formatting.
+- Prefer the simplest correct solution that fully satisfies the request. Fix the root cause rather than hiding the symptom; do not trade correctness or maintainability for a smaller diff.
+- Write human-readable code with clear names and straightforward control flow. Prefer explicit, easy-to-understand code over clever tricks or compressed expressions.
+- Do not overengineer: avoid speculative features, premature optimization, and abstractions or configuration that the current task does not need.
+- Follow the existing architecture, patterns, naming, dependencies, formatting, package-manager, and error-handling conventions. Use a different approach only when the established approach cannot reasonably satisfy the request; explain why.
+- Make the smallest coherent change that achieves the goal. Preserve unrelated user changes and avoid opportunistic refactoring, cleanup, or formatting.
+- Preserve existing application behavior, user flows, and integrations unless changing them is necessary to fulfill the request. Keep necessary behavior changes narrowly scoped and report their impact.
 - Do not modify generated files, vendored code, lockfiles, public APIs, schemas, migrations, or project structure unless the requested change requires it. Regenerate lockfiles only through the repository’s existing package manager.
 - Prefer existing platform and repository primitives. Introduce a new dependency or cross-cutting pattern only when the request requires it or existing options cannot reasonably satisfy it; explain the reason.
 - Do not make checks pass by weakening types, assertions, validation, error handling, lint rules, or compiler settings, or by suppressing or disabling failures.
 
 ## Tests and verification
 
-- Add or update only focused tests needed to cover the requested behavior, following the repository’s existing test conventions.
-- Never delete, weaken, or rewrite tests merely to make the implementation pass. Do not update snapshots blindly or perform unrelated test refactoring.
+- Never write, add, modify, delete, or regenerate tests or test snapshots. Running existing tests non-destructively remains allowed.
+- If the user’s requested changes make existing tests outdated, only report the affected test paths and explain which expectations no longer match the intended behavior and why. Leave the tests unchanged; do not assume a failing test is outdated without evidence.
 - Run the narrowest relevant repository-provided checks first, including applicable formatting checks, linting, type-checking, focused tests, and builds.
 - Broaden or repeat verification only when required by the user, repository, or CI, or justified by cross-cutting impact, new changes, failures, or concrete unresolved concerns. Otherwise stop once the relevant checks pass.
 - Prefer existing scripts and configured tools. Do not substitute a different tool or invent an unrelated validation workflow.
