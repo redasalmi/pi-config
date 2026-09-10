@@ -35,7 +35,6 @@ export function readCodexDefaults(): CodexDefaults {
 export function writeCodexDefaults(update: Partial<CodexDefaults>): void {
   const path = join(getAgentDir(), STATE_FILE);
   mkdirSync(dirname(path), { recursive: true });
-  // Preserve legacy preset defaults until the standalone extension supersedes them.
   writeFileSync(path, `${JSON.stringify({ ...readDefaultsFile(), ...update }, null, 2)}\n`, "utf8");
 }
 

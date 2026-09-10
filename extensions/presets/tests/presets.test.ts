@@ -164,10 +164,10 @@ test("explicitly applying another preset resolves pending restoration without re
   assert.equal(h.pi.getThinkingLevel(), "medium");
 });
 
-test("explicit none on resume does not fall back to another session's global default", async () => {
+test("explicit none on resume does not fall back to the stored global default", async () => {
   const h = harness();
   Object.assign(h.ctx, { hasUI: false });
-  await writeFile(join(directory, "codex.json"), JSON.stringify({ preset: "work" }));
+  await writeFile(join(directory, "presets-state.json"), JSON.stringify({ preset: "work" }));
   h.pi.appendEntry(PRESET_ENTRY_TYPE, { name: null });
   const { presets } = setupPresets(h);
   registerLifecycle(h.pi, h.state, presets);
@@ -190,16 +190,36 @@ test("reload does not reapply the old CLI preset over session state", async () =
   await h.emit("session_shutdown");
 });
 
-test("session preset changes do not write defaults; saving a default does not change the session", async () => {
+test("session preset changes update the startup default without changing unrelated defaults", async () => {
   const { h, presets } = setupPresets();
   h.state.presets.custom = { thinkingLevel: "high" };
   await presets.handlePresetCommand("custom", h.ctx);
+  assert.equal(JSON.parse(await readFile(join(directory, "presets-state.json"), "utf8")).preset, "custom");
   await assert.rejects(readFile(join(directory, "codex.json")), { code: "ENOENT" });
-  await assert.rejects(readFile(join(directory, "presets-state.json")), { code: "ENOENT" });
   await presets.handlePresetCommand("default none", h.ctx);
   assert.equal(JSON.parse(await readFile(join(directory, "presets-state.json"), "utf8")).preset, null);
-  await assert.rejects(readFile(join(directory, "codex.json")), { code: "ENOENT" });
   assert.equal(h.state.activePresetName, "custom");
+});
+
+test("a preset selected in a session is reused by the next new session", async () => {
+  await writeFile(join(directory, "presets.json"), JSON.stringify({ custom: { thinkingLevel: "high", tools: ["read"] } }));
+  const first = harness();
+  Object.assign(first.ctx, { hasUI: false });
+  const firstPresets = setupPresets(first).presets;
+  registerLifecycle(first.pi, first.state, firstPresets);
+  await first.emit("session_start", { reason: "startup" });
+  await firstPresets.handlePresetCommand("custom", first.ctx);
+  assert.equal(first.state.activePresetName, "custom");
+  await first.emit("session_shutdown");
+
+  const next = harness();
+  Object.assign(next.ctx, { hasUI: false });
+  registerLifecycle(next.pi, next.state, setupPresets(next).presets);
+  await next.emit("session_start", { reason: "startup" });
+  assert.equal(next.state.activePresetName, "custom");
+  assert.deepEqual(next.pi.getActiveTools(), ["read"]);
+  assert.equal(next.state.presetSelectionSource, "global default");
+  await next.emit("session_shutdown");
 });
 
 test("presets accept advertised tiers and reject unsupported tiers atomically", async () => {
@@ -223,21 +243,20 @@ test("preset provenance respects project trust", async () => {
   assert.match(trusted.sources.custom, /^trusted project:/);
 });
 
-test("new defaults supersede legacy Codex defaults without modifying unrelated settings", async () => {
+test("Codex settings never drive preset defaults", async () => {
   const { h, presets } = setupPresets();
   await writeFile(join(directory, "codex.json"), JSON.stringify({ preset: "work", quotaWarnings: false }));
-  assert.equal(readPresetDefault().name, "work");
+  assert.equal(readPresetDefault().name, undefined, "codex.json must not be a preset source");
   writeCodexDefaults({ serviceTier: "priority" });
-  assert.equal(readPresetDefault().name, "work", "Codex writes must preserve the legacy fallback");
-  const legacy = await readFile(join(directory, "codex.json"), "utf8");
+  assert.equal(readPresetDefault().name, undefined);
   await presets.handlePresetCommand("default deep", h.ctx);
   assert.equal(readPresetDefault().name, "deep");
   assert.match(readPresetDefault().source, /presets-state.json$/);
+  assert.equal(JSON.parse(await readFile(join(directory, "codex.json"), "utf8")).preset, "work", "Presets must not rewrite codex.json");
   await presets.handlePresetCommand("default none", h.ctx);
   assert.equal(readPresetDefault().name, null);
-  assert.equal(await readFile(join(directory, "codex.json"), "utf8"), legacy);
   await writeFile(join(directory, "presets-state.json"), "invalid");
-  assert.equal(readPresetDefault().name, undefined, "invalid new state must not reactivate the legacy default");
+  assert.equal(readPresetDefault().name, undefined, "invalid state must not reactivate a selection");
 });
 
 test("standalone extension owns the command, flag, shortcut, and instructions across providers", async () => {
@@ -266,7 +285,7 @@ test("standalone extension owns the command, flag, shortcut, and instructions ac
 });
 
 test("Codex alone neither registers nor applies presets and persists manual tiers independently", async () => {
-  await writeFile(join(directory, "codex.json"), JSON.stringify({ preset: "work", statusline: [], quotaWarnings: false }));
+  await writeFile(join(directory, "codex.json"), JSON.stringify({ statusline: [], quotaWarnings: false }));
   const h = runtimeHarness();
   codex(h.pi);
   assert.equal(h.commands.has("preset"), false);

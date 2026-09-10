@@ -52,9 +52,9 @@ Manual session tiers persist as `codex-service-tier` records and follow tree
 navigation, even without Presets. Existing tiers in `preset-state` records remain
 readable; the newest applicable tier record on the active branch wins.
 
-Presets reads the legacy `codex.json` preset default until a new
-`presets-state.json` exists. Codex writes preserve the legacy field; no automatic
-configuration rewrite or session migration is needed.
+Preset selection defaults live in `presets-state.json` and are owned by the
+Presets extension. Codex ignores any `preset` field in `codex.json`; no
+automatic configuration rewrite or session migration is needed.
 
 ## Planning and review boundaries
 

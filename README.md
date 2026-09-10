@@ -69,7 +69,8 @@ this package.
 ## Presets
 
 The [Presets extension](extensions/presets/README.md) owns `/preset`, `--preset`,
-and Ctrl+Shift+U for session-scoped model/thinking/tools/instructions. It works
+and Ctrl+Shift+U for model/thinking/tools/instructions presets. Selecting a preset
+remembers it as the startup default for new sessions. It works
 independently of Codex; enabling both preserves service-tier and statusline
 integration. Existing definitions and session records remain compatible.
 Use `/preset status` for configuration sources. Run `npm run test:presets`.

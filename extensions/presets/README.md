@@ -9,9 +9,9 @@ Codex's optional integration.
 
 | Command | Behavior |
 | --- | --- |
-| `/preset NAME` | Apply a preset to this session only. |
+| `/preset NAME` | Apply a preset and remember it as the startup default. |
 | `/preset` | Choose a session preset. Ctrl+Shift+U cycles presets and none. |
-| `/preset none` | Restore the saved pre-preset configuration and clear the selection. |
+| `/preset none` | Restore the saved pre-preset configuration, clear the selection, and disable the startup default. |
 | `/preset default NAME` / `/preset default none` | Save/clear the startup default without changing this session. |
 | `/preset status` | Show configuration sources, current values, and baseline availability. |
 | `pi --preset NAME` / `pi --preset none` | Override selection at process startup, not on reload. |
@@ -54,8 +54,11 @@ Presets do not grant permission to bypass planning guards or repository policies
 
 ## Defaults and session compatibility
 
-Explicit CLI selection wins at startup. Otherwise a saved session selection
-(including explicit none) wins over the global default.
+Explicit CLI selection wins at startup and is not saved. Otherwise a saved
+session selection (including explicit none) wins over the global default.
+Selecting a preset during a session (`/preset NAME`, `/preset none`, or
+Ctrl+Shift+U) also updates the global default, so the next new session reuses it.
+`/preset default ...` sets the default without changing the current session.
 
 New default selections are saved in `presets-state.json` in Pi's agent directory:
 
@@ -63,9 +66,10 @@ New default selections are saved in `presets-state.json` in Pi's agent directory
 { "preset": "focused" }
 ```
 
-If this file does not exist, Presets reads the legacy `preset` field in `codex.json`.
-`/preset default ...` writes only the new file; it does not rewrite Codex settings.
-An explicit `null` disables the default and takes precedence over the legacy file.
+Missing or malformed state disables the startup default rather than falling back to
+another source. Applying a preset or using `/preset default ...` writes only the
+new file; neither rewrites Codex settings. An explicit `null` disables the
+default.
 Existing `presets.json` definitions and `preset-state` session records need no
 migration, and existing sessions are not rewritten during this extraction.
 
@@ -106,5 +110,5 @@ npm run typecheck
 
 Tests use isolated agent directories and mocked Pi/provider boundaries, without
 real credentials or network requests. They cover standalone use, both extension
-load orders, legacy defaults and session records, manual tiers, restoration,
+load orders, defaults and session records, manual tiers, restoration,
 validation, and command ownership.

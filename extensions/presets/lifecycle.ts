@@ -22,9 +22,9 @@ export function registerLifecycle(pi: ExtensionAPI, state: PresetsState, presets
     const restored = presets.restore(ctx);
     const name = presetFlag || (!restored ? readStoredPresetName() : undefined);
     if (name === "none") {
-      await presets.clearPreset(ctx, { persist: true, notify: Boolean(presetFlag), source: "CLI --preset" });
+      await presets.clearPreset(ctx, { persist: true, notify: Boolean(presetFlag), source: "CLI --preset", storeDefault: false });
     } else if (name) {
-      if (Object.hasOwn(state.presets, name)) await presets.applyPreset(name, state.presets[name], ctx, { persist: true, notify: Boolean(presetFlag), source: presetFlag ? "CLI --preset" : "global default" });
+      if (Object.hasOwn(state.presets, name)) await presets.applyPreset(name, state.presets[name], ctx, { persist: true, notify: Boolean(presetFlag), source: presetFlag ? "CLI --preset" : "global default", storeDefault: !presetFlag });
       else notify(ctx, `Unknown preset "${name}". Use /preset status to inspect configuration.`, "warning");
     }
     presets.persist(ctx);

@@ -72,15 +72,14 @@ export function loadPresets(cwd: string, projectTrusted: boolean): {
 }
 
 export function readPresetDefault(): { name: string | null | undefined; source: string } {
-  const current = join(getAgentDir(), STATE_FILE);
-  const path = existsSync(current) ? current : join(getAgentDir(), "codex.json");
+  const path = join(getAgentDir(), STATE_FILE);
   try {
     const value: unknown = JSON.parse(readFileSync(path, "utf8"));
     if (isRecord(value) && (typeof value.preset === "string" || value.preset === null)) {
       return { name: value.preset, source: path };
     }
   } catch {
-    // Missing or malformed defaults must not accidentally activate a legacy selection.
+    // Missing or malformed state must not activate a selection.
   }
   return { name: undefined, source: path };
 }

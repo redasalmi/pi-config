@@ -7,7 +7,7 @@ import { getServiceTierIntegration, type ServiceTierIntegration } from "./integr
 import { isRecord, notify } from "./utils.ts";
 
 type PresetDeps = { renderStatus: (ctx: ExtensionContext) => boolean };
-type ApplyOptions = { persist: boolean; notify: boolean; source?: string };
+type ApplyOptions = { persist: boolean; notify: boolean; source?: string; storeDefault?: boolean };
 
 export function describePreset(preset: Preset): string {
   return [
@@ -116,6 +116,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     state.presetSelectionSource = options.source ?? "session (explicit none)";
     restorePending = false;
     if (options.persist) persist(ctx);
+    if (options.persist && options.storeDefault !== false) clearStoredPresetName();
     deps.renderStatus(ctx);
     if (options.notify) notify(ctx, original ? "Preset cleared; pre-preset configuration restored" : "Preset cleared; current model and tools retained (no saved baseline)");
   }
@@ -156,8 +157,9 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     state.presetSelectionSource = options.source ?? "session";
     restorePending = false;
     if (options.persist) persist(ctx);
+    if (options.persist && options.storeDefault !== false) writeStoredPresetName(name);
     deps.renderStatus(ctx);
-    if (options.notify) notify(ctx, `Preset: ${name} (session only)`);
+    if (options.notify) notify(ctx, `Preset: ${name}`);
     return true;
   }
 
