@@ -89,7 +89,7 @@ Use `/preset status` for configuration sources. Run `npm run test:presets`.
 
 The [Codex extension](extensions/codex/README.md) adds service tiers, quota
 reporting, planning/checklists, and local diff/review commands.
-Use `/status` for current state; preset selection belongs to Presets.
+Use `/codex status` for current state; preset selection belongs to Presets.
 Run its isolated regression tests with `npm run test:codex`.
 
 ## OpenCode Go

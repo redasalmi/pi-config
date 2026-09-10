@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { PLAN_ENTRY_TYPE } from "./constants.ts";
+import type { CodexSubcommand } from "./commands.ts";
 import type { CodexState, PlanState, PlanStep } from "./types.ts";
 import { isRecord, notify } from "./utils.ts";
 
@@ -40,7 +41,7 @@ export function validateSteps(value: unknown): PlanStep[] {
   return steps;
 }
 
-export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
+export function createPlanning(pi: ExtensionAPI, state: CodexState): CodexSubcommand {
   function enableChecklistTool(): void {
     const active = pi.getActiveTools();
     if (!active.includes("update_plan")) pi.setActiveTools([...active, "update_plan"]);
@@ -62,7 +63,7 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
       .filter((step) => step.status !== "completed")
       .slice(0, 5);
     ctx.ui.setWidget("codex-plan", [
-      `${state.plan.mode === "planning" ? "Proposed plan" : "Checklist"}: ${completed}/${state.plan.steps.length} completed · /plan status`,
+      `${state.plan.mode === "planning" ? "Proposed plan" : "Checklist"}: ${completed}/${state.plan.steps.length} completed · /codex plan status`,
       ...visible.map((step) => `${step.status === "in_progress" ? "→" : "○"} ${step.index + 1}. ${step.step}`),
     ]);
   }
@@ -87,7 +88,11 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
       } catch {
         // Corrupt state must not silently drop a previously requested write guard.
         state.plan.mode = "planning";
-        notify(ctx, "Saved plan is invalid; planning guard remains enabled. Use /plan clear to reset.", "warning");
+        notify(
+          ctx,
+          "Saved plan is invalid; planning guard remains enabled. Use /codex plan clear to reset.",
+          "warning",
+        );
       }
     }
     if (state.plan.mode !== "off") enableChecklistTool();
@@ -104,7 +109,7 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
     if (state.plan.mode === "planning" && !PLANNING_TOOLS.has(event.toolName)) {
       return {
         block: true,
-        reason: `Planning mode blocks ${event.toolName}. Use read/search tools. Only the user can exit planning with /plan off or approve execution with /plan execute.`,
+        reason: `Planning mode blocks ${event.toolName}. Use read/search tools. Only the user can exit planning with /codex plan off or approve execution with /codex plan execute.`,
       };
     }
   });
@@ -113,7 +118,7 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
     enableChecklistTool();
     const instructions =
       state.plan.mode === "planning"
-        ? "Planning mode: inspect and propose only. Do not change files or external services. Shell, browser and unknown agent tools are blocked. If a structured checklist helps, use update_plan with all steps pending. Ask the user to approve with /plan execute; do not implement automatically."
+        ? "Planning mode: inspect and propose only. Do not change files or external services. Shell, browser and unknown agent tools are blocked. If a structured checklist helps, use update_plan with all steps pending. Ask the user to approve with /codex plan execute; do not implement automatically."
         : "Track the approved work with update_plan when a checklist is useful. Mark completed only after verification; preserve the user's scope and approval requirements. A checklist is not authorization for external writes or destructive actions.";
     return {
       systemPrompt: `${event.systemPrompt}\n\n${instructions}`,
@@ -133,12 +138,12 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
     name: "update_plan",
     label: "Plan",
     description:
-      "Replace the optional session checklist while /plan is enabled. At most 20 steps and one in_progress step. In planning mode every step must be pending. Does not authorize implementation.",
+      "Replace the optional session checklist while /codex plan is enabled. At most 20 steps and one in_progress step. In planning mode every step must be pending. Does not authorize implementation.",
     parameters: PLAN_PARAMS,
     async execute(_id, args, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
       if (state.plan.mode === "off")
-        throw new Error("Checklist is disabled. The user can enable it with /plan on or /plan track.");
+        throw new Error("Checklist is disabled. The user can enable it with /codex plan on or /codex plan track.");
       const steps = validateSteps(args.plan);
       if (state.plan.mode === "planning" && steps.some((step) => step.status !== "pending"))
         throw new Error("Proposed planning steps must all be pending");
@@ -159,9 +164,8 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
     },
   });
 
-  pi.registerCommand("plan", {
-    description: "Plan without agent writes, approve execution, or track an optional checklist",
-    getArgumentCompletions: (prefix) =>
+  return {
+    completions: (prefix) =>
       ["on", "off", "execute", "track", "clear", "status"]
         .filter((value) => value.startsWith(prefix))
         .map((value) => ({ value, label: value })),
@@ -173,7 +177,7 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
           [
             `Plan mode: ${state.plan.mode}`,
             ...state.plan.steps.map((step, index) => `${index + 1}. [${step.status}] ${step.step}`),
-            "Usage: /plan [on|off|execute|track|clear|status|planning prompt]",
+            "Usage: /codex plan [on|off|execute|track|clear|status|planning prompt]",
           ].join("\n"),
         );
         return;
@@ -210,7 +214,7 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
         if (state.plan.mode === "planning") {
           notify(
             ctx,
-            "Use /plan execute to approve the proposed plan, or /plan off to leave planning without starting work",
+            "Use /codex plan execute to approve the proposed plan, or /codex plan off to leave planning without starting work",
             "warning",
           );
           return;
@@ -228,5 +232,5 @@ export function registerPlanning(pi: ExtensionAPI, state: CodexState): void {
       );
       if (command && !["on", "off", "track", "clear"].includes(command)) pi.sendUserMessage(command);
     },
-  });
+  };
 }

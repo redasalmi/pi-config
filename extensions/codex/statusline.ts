@@ -71,7 +71,7 @@ export function createStatusline(state: CodexState, deps: StatuslineDeps) {
       }
     }
     stale ||= state.statusStale && state.statusline.some((item) => item === "usage" || item === "credits");
-    if (stale) parts.push(ctx.ui.theme.fg("warning", "stale · /usage limits"));
+    if (stale) parts.push(ctx.ui.theme.fg("warning", "stale · /codex usage limits"));
     ctx.ui.setStatus(
       STATUS_KEY,
       parts.length ? `${ctx.ui.theme.fg("mdLink", "Codex")} ${parts.join(ctx.ui.theme.fg("dim", " • "))}` : undefined,
@@ -84,7 +84,7 @@ export function createStatusline(state: CodexState, deps: StatuslineDeps) {
     if (!operation) {
       notify(
         ctx,
-        `Statusline: ${state.statusline.join(", ") || "empty"}\nUsage: /statusline set|add|remove items | reset. Percentages are quota remaining.`,
+        `Statusline: ${state.statusline.join(", ") || "empty"}\nUsage: /codex statusline set|add|remove items | reset. Percentages are quota remaining.`,
       );
       return;
     }
@@ -105,7 +105,7 @@ export function createStatusline(state: CodexState, deps: StatuslineDeps) {
       if (operation === "add") state.statusline = [...new Set([...state.statusline, ...items])];
       if (operation === "remove") state.statusline = state.statusline.filter((item) => !items.includes(item));
     } else {
-      notify(ctx, "Usage: /statusline set|add|remove items | reset", "error");
+      notify(ctx, "Usage: /codex statusline set|add|remove items | reset", "error");
       return;
     }
     writeStoredStatusline(state.statusline);

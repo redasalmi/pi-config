@@ -233,7 +233,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     state.activePreset = preset;
     if (tools) pi.setActiveTools(tools);
     if (data.serviceTier === null || typeof data.serviceTier === "string") {
-      // Codex independently restores the newest tier record, including manual /tier changes.
+      // Codex independently restores the newest tier record, including manual /codex tier changes.
       state.selectedServiceTier = data.serviceTier ?? undefined;
     }
     // Pi restores model/thinking entries itself. Do not overwrite manual overrides.

@@ -332,7 +332,10 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
         if (generation !== state.refreshGeneration) return false;
         state.statusStale = true;
         if (!deps.renderStatus(ctx)) {
-          ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("warning", "Codex usage unavailable — run /usage to retry"));
+          ctx.ui.setStatus(
+            STATUS_KEY,
+            ctx.ui.theme.fg("warning", "Codex usage unavailable — run /codex usage to retry"),
+          );
         }
         console.error(`Codex usage refresh failed: ${error instanceof Error ? error.message : String(error)}`);
         return false;
@@ -520,7 +523,7 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     const loaded = await refreshTokenUsage(ctx);
     if (signal.aborted) return;
     if (!loaded) {
-      notify(ctx, "Token activity unavailable; sign in with ChatGPT Codex auth and retry /usage", "error");
+      notify(ctx, "Token activity unavailable; sign in with ChatGPT Codex auth and retry /codex usage", "error");
       return;
     }
     notify(ctx, renderTokenActivity(ctx, view));
@@ -629,11 +632,17 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     }
   }
 
+  function usageCompletions(prefix: string) {
+    return ["limits", "daily", "weekly", "cumulative", "reset", "warnings on", "warnings off"]
+      .filter((value) => value.startsWith(prefix))
+      .map((value) => ({ value, label: value }));
+  }
+
   async function handleUsageCommand(args: string, ctx: ExtensionContext): Promise<void> {
     const view = args.trim().toLowerCase();
     if (view.startsWith("warnings")) {
       if (view !== "warnings on" && view !== "warnings off") {
-        notify(ctx, `Quota warnings: ${state.quotaWarnings ? "on" : "off"}. Usage: /usage warnings on|off`);
+        notify(ctx, `Quota warnings: ${state.quotaWarnings ? "on" : "off"}. Usage: /codex usage warnings on|off`);
         return;
       }
       state.quotaWarnings = view === "warnings on";
@@ -658,7 +667,7 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       return;
     }
     if (view && view !== "limits") {
-      notify(ctx, "Usage: /usage [daily|weekly|cumulative|reset]", "error");
+      notify(ctx, "Usage: /codex usage [daily|weekly|cumulative|reset]", "error");
       return;
     }
     if (ctx.mode !== "tui") {
@@ -719,5 +728,6 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     refreshTokenUsage,
     loadGitBranch,
     handleUsageCommand,
+    usageCompletions,
   };
 }

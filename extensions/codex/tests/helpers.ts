@@ -1,4 +1,5 @@
 import type { Model } from "@earendil-works/pi-ai";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -25,7 +26,10 @@ export function model(id = "test-model", tiers = true): Model<"openai-codex-resp
 }
 
 type Handler = (event: any, ctx: ExtensionCommandContext) => unknown;
-type Command = { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> };
+type Command = {
+  handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
+  getArgumentCompletions?: (prefix: string) => AutocompleteItem[] | null;
+};
 
 // Partial boundary doubles: no real Pi session, auth store, provider, or UI starts.
 export function harness() {

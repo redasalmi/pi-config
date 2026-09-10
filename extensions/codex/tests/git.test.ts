@@ -5,7 +5,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { pinReview, registerGitCommands, runGit } from "../git.ts";
+import { createGitCommands, pinReview, runGit } from "../git.ts";
+import { registerCodexCommand } from "../commands.ts";
 import { harness } from "./helpers.ts";
 
 const exec = promisify(execFile);
@@ -38,8 +39,8 @@ test("pinReview resolves immutable commit ids and a merge base using local refs"
 test("diff separates staged, unstaged, and untracked changes without calling a model", async () => {
   const h = harness();
   Object.assign(h.ctx, { cwd: repo });
-  registerGitCommands(h.pi, h.state);
-  await h.command("diff");
+  registerCodexCommand(h.pi, createGitCommands(h.pi, h.state));
+  await h.command("codex", "diff");
   const text = h.notices.join("\n");
   assert.match(text, /Staged:/);
   assert.match(text, /Unstaged:/);
@@ -54,8 +55,8 @@ test("diff separates staged, unstaged, and untracked changes without calling a m
 test("untracked previews are explicit and bounded", async () => {
   const h = harness();
   Object.assign(h.ctx, { cwd: repo });
-  registerGitCommands(h.pi, h.state);
-  await h.command("diff", "untracked");
+  registerCodexCommand(h.pi, createGitCommands(h.pi, h.state));
+  await h.command("codex", "diff untracked");
   assert.match(h.notices.join("\n"), /Untracked fixture/);
   assert.equal(h.messages.length, 0);
   await h.emit("session_shutdown");
@@ -84,12 +85,12 @@ test("Git output is bounded during collection and marks truncation", async () =>
 test("committed review reuses the skill with pinned SHAs; working review is a separate scope", async () => {
   const h = harness();
   Object.assign(h.ctx, { cwd: repo });
-  registerGitCommands(h.pi, h.state);
-  await h.command("review", "base=HEAD~1 head=HEAD");
+  registerCodexCommand(h.pi, createGitCommands(h.pi, h.state));
+  await h.command("codex", "review base=HEAD~1 head=HEAD");
   assert.equal(h.messages.length, 1);
   assert.match(h.messages[0].text, /^\/skill:code-review base=[a-f0-9]+ head=[a-f0-9]+/);
   assert.equal(h.messages[0].options.expandPromptTemplates, true);
-  await h.command("review", "working");
+  await h.command("codex", "review working");
   assert.equal(h.messages.length, 2);
   assert.match(h.messages[1].text, /working-tree review/);
   assert.equal(h.messages[1].options.expandPromptTemplates, false);
@@ -99,8 +100,8 @@ test("committed review reuses the skill with pinned SHAs; working review is a se
 test("review failures never send a model prompt and cancellation stops Git", async () => {
   const h = harness();
   Object.assign(h.ctx, { cwd: repo });
-  registerGitCommands(h.pi, h.state);
-  await h.command("review", "base=nonexistent-test-ref");
+  registerCodexCommand(h.pi, createGitCommands(h.pi, h.state));
+  await h.command("codex", "review base=nonexistent-test-ref");
   assert.equal(h.messages.length, 0);
   assert.match(h.notices[0], /Review not started/);
   const signal = AbortSignal.abort();

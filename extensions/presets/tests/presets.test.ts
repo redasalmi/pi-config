@@ -340,7 +340,7 @@ test("Codex alone neither registers nor applies presets and persists manual tier
   assert.equal(h.shortcuts.size, 0);
   await h.emit("session_start", { reason: "startup" });
   assert.equal(h.ctx.model?.id, "test-model");
-  await h.command("tier", "Fast");
+  await h.command("codex", "tier Fast");
   assert.equal(h.entries.at(-1)?.type, "custom");
   assert.deepEqual((h.entries.at(-1) as { data: unknown }).data, { serviceTier: "priority" });
   const saved = [...h.entries];
@@ -349,7 +349,7 @@ test("Codex alone neither registers nor applies presets and persists manual tier
   resumed.entries = saved;
   codex(resumed.pi);
   await resumed.emit("session_start", { reason: "resume" });
-  await resumed.command("tier");
+  await resumed.command("codex", "tier");
   assert.match(resumed.notices.at(-1)!, /Current tier: priority/);
   assert.equal(
     resumed.entries.some((entry) => entry.type === "custom" && entry.customType === PRESET_ENTRY_TYPE),
@@ -410,7 +410,7 @@ for (const order of ["codex-first", "presets-first"] as const) {
     const selected = [...h.entries];
     const request = (await h.emit("before_provider_request", { payload: {} })).find(isRecord);
     assert.deepEqual(request, { service_tier: "priority" });
-    await h.command("tier", "off");
+    await h.command("codex", "tier off");
     assert.equal((await h.emit("before_provider_request", { payload: {} })).some(isRecord), false);
     await h.command("preset", "status");
     assert.match(h.notices.at(-1)!, /Service tier: standard/);
@@ -462,11 +462,11 @@ test("legacy preset records restore tiers and later standalone tier records take
   codex(h.pi);
   presetsExtension(h.pi);
   await h.emit("session_start", { reason: "resume" });
-  await h.command("tier");
+  await h.command("codex", "tier");
   assert.match(h.notices.at(-1)!, /Current tier: standard/);
   h.entries = legacy;
   await h.emit("session_tree");
-  await h.command("tier");
+  await h.command("codex", "tier");
   assert.match(h.notices.at(-1)!, /Current tier: priority/);
   await h.emit("session_shutdown");
 });
@@ -483,7 +483,7 @@ test("disabling Codex after clearing the session tier restores preset tools and 
   await h.emit("session_start", { reason: "startup" });
   const originalTools = h.pi.getActiveTools();
   await h.command("preset", "custom");
-  await h.command("tier", "off");
+  await h.command("codex", "tier off");
   await h.emit("session_shutdown");
 
   const resumed = runtimeHarness();

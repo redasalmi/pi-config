@@ -1,14 +1,15 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { CodexSubcommand } from "./commands.ts";
 import type { CodexState } from "./types.ts";
 import type { createUsage } from "./usage.ts";
 import { findServiceTier } from "./service-tiers.ts";
 import { formatTokens, getStat, itemLabel, notify } from "./utils.ts";
 
-export function registerStatusCommand(
+export function createStatusCommand(
   pi: ExtensionAPI,
   state: CodexState,
   usage: ReturnType<typeof createUsage>,
-): void {
+): CodexSubcommand {
   function text(ctx: ExtensionContext): string {
     const context = ctx.getContextUsage();
     const tier = findServiceTier(ctx.model, state.selectedServiceTier);
@@ -24,16 +25,17 @@ export function registerStatusCommand(
       usage.limitsText(ctx),
       ctx.ui.theme.fg(
         "dim",
-        "Use /preset status for configuration sources; /usage cumulative for account token activity.",
+        "Use /preset status for configuration sources; /codex usage cumulative for account token activity.",
       ),
     ].join("\n");
   }
 
-  pi.registerCommand("status", {
-    description: "Show local Codex status immediately; refresh Git and limits in parallel",
+  return {
+    completions: (prefix) =>
+      ["tokens"].filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value })),
     handler: async (args, ctx) => {
       if (args.trim() && args.trim() !== "tokens") {
-        notify(ctx, "Usage: /status [tokens]", "error");
+        notify(ctx, "Usage: /codex status [tokens]", "error");
         return;
       }
       const signal = usage.lifetimeSignal();
@@ -51,5 +53,5 @@ export function registerStatusCommand(
       if (failures) updated += `\n${ctx.ui.theme.fg("warning", `${failures} refresh operation(s) unavailable.`)}`;
       notify(ctx, updated);
     },
-  });
+  };
 }

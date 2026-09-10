@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { CodexSubcommand } from "./commands.ts";
 import type { CodexState } from "./types.ts";
 import { notify } from "./utils.ts";
 
@@ -88,7 +89,10 @@ export async function pinReview(cwd: string, base: string, head = "HEAD", signal
   return { base, head, baseSha, headSha, mergeBase };
 }
 
-export function registerGitCommands(pi: ExtensionAPI, state: CodexState): void {
+export function createGitCommands(
+  pi: ExtensionAPI,
+  state: CodexState,
+): { diff: CodexSubcommand; review: CodexSubcommand } {
   const lifetime = new AbortController();
   pi.on("session_shutdown", () => lifetime.abort());
   const git = (ctx: ExtensionContext, args: string[]) => runGit(ctx.cwd, args, lifetime.signal);
@@ -101,16 +105,15 @@ export function registerGitCommands(pi: ExtensionAPI, state: CodexState): void {
     return `${staged ? "Staged" : "Unstaged"}:\n${printable(result.stdout) || "No changes"}${result.truncated ? "\n[Truncated at 50 KiB; use your local Git viewer for the complete diff.]" : ""}`;
   }
 
-  pi.registerCommand("diff", {
-    description: "Inspect local staged/unstaged diffs and untracked files without an LLM call",
-    getArgumentCompletions: (prefix) =>
+  const diff: CodexSubcommand = {
+    completions: (prefix) =>
       ["all", "staged", "unstaged", "untracked"]
         .filter((value) => value.startsWith(prefix))
         .map((value) => ({ value, label: value })),
     handler: async (args, ctx) => {
       const view = args.trim() || "all";
       if (!["all", "staged", "unstaged", "untracked"].includes(view)) {
-        notify(ctx, "Usage: /diff [all|staged|unstaged|untracked]", "error");
+        notify(ctx, "Usage: /codex diff [all|staged|unstaged|untracked]", "error");
         return;
       }
       try {
@@ -157,24 +160,23 @@ export function registerGitCommands(pi: ExtensionAPI, state: CodexState): void {
           notify(ctx, `Diff unavailable: ${error instanceof Error ? error.message : String(error)}`, "error");
       }
     },
-  });
+  };
 
-  pi.registerCommand("review", {
-    description: "Launch a read-only committed or working-tree review with explicit scope",
+  const review: CodexSubcommand = {
     handler: async (args, ctx) => {
       if (!ctx.isIdle()) {
         notify(ctx, "Wait for the current task to finish before starting a review", "warning");
         return;
       }
       if (state.plan.mode === "planning") {
-        notify(ctx, "Use /plan off before review so the reviewer can run read-only Git commands", "warning");
+        notify(ctx, "Use /codex plan off before review so the reviewer can run read-only Git commands", "warning");
         return;
       }
       try {
         let scope = args.trim();
         if (!scope) {
           if (!ctx.hasUI) {
-            notify(ctx, "Usage: /review working | base=REF [head=REF]", "error");
+            notify(ctx, "Usage: /codex review working | base=REF [head=REF]", "error");
             return;
           }
           const choice = await ctx.ui.select("Review scope", ["Committed branch changes", "Working-tree changes"], {
@@ -195,7 +197,7 @@ export function registerGitCommands(pi: ExtensionAPI, state: CodexState): void {
             options.filter((option) => option.startsWith("base=")).length > 1 ||
             options.filter((option) => option.startsWith("head=")).length > 1
           )
-            throw new Error("Usage: /review working | base=REF [head=REF]");
+            throw new Error("Usage: /codex review working | base=REF [head=REF]");
           let base = options.find((option) => option.startsWith("base="))?.slice(5);
           const head = options.find((option) => option.startsWith("head="))?.slice(5) ?? "HEAD";
           if (!base) {
@@ -225,5 +227,7 @@ export function registerGitCommands(pi: ExtensionAPI, state: CodexState): void {
           notify(ctx, `Review not started: ${error instanceof Error ? error.message : String(error)}`, "error");
       }
     },
-  });
+  };
+
+  return { diff, review };
 }

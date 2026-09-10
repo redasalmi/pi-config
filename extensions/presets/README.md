@@ -87,8 +87,8 @@ Unknown baseline tools or unavailable models are reported rather than silently d
 
 ## Optional Codex integration
 
-With both extensions enabled, Codex's existing `preset` footer field and `/status`
-reflect the selection. Codex continues to own `/tier`, tier validation, provider
+With both extensions enabled, Codex's existing `preset` footer field and `/codex status`
+reflect the selection. Codex continues to own `/codex tier`, tier validation, provider
 request routing, and tier persistence. Either extension can load first.
 
 A preset may specify `serviceTier` as an advertised ID or display name; `null`

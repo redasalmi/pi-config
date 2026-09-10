@@ -1,4 +1,5 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { CodexSubcommand } from "./commands.ts";
 import type { CodexState } from "./types.ts";
 import { writeStoredServiceTier } from "./storage.ts";
 import { describeServiceTiers, findServiceTier, refreshServiceTierCatalog } from "./service-tiers.ts";
@@ -9,9 +10,8 @@ type ServiceTierDeps = {
   persistSession: (ctx: ExtensionContext) => void;
 };
 
-export function createServiceTier(pi: ExtensionAPI, state: CodexState, deps: ServiceTierDeps): void {
-  pi.registerCommand("tier", {
-    description: "Select a session service tier; /tier save NAME saves a startup default",
+export function createServiceTier(state: CodexState, deps: ServiceTierDeps): CodexSubcommand {
+  return {
     handler: async (args, ctx) => {
       if (!ctx.isIdle()) {
         notify(ctx, "Wait for the current task to finish before changing the service tier", "warning");
@@ -24,7 +24,7 @@ export function createServiceTier(pi: ExtensionAPI, state: CodexState, deps: Ser
       if (!name) {
         notify(
           ctx,
-          `Current tier: ${state.selectedServiceTier ?? "standard"}\nAvailable: ${describeServiceTiers(ctx)}\nUsage: /tier NAME|off | /tier save NAME|off`,
+          `Current tier: ${state.selectedServiceTier ?? "standard"}\nAvailable: ${describeServiceTiers(ctx)}\nUsage: /codex tier NAME|off | /codex tier save NAME|off`,
         );
         return;
       }
@@ -44,5 +44,5 @@ export function createServiceTier(pi: ExtensionAPI, state: CodexState, deps: Ser
       deps.renderStatus(ctx);
       notify(ctx, `Session service tier: ${tier ? `${tier.name} (${tier.id})` : "standard"}`);
     },
-  });
+  };
 }

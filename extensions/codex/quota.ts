@@ -24,7 +24,7 @@ export function createQuotaWarnings(state: CodexState) {
             .join(" ");
           notify(
             ctx,
-            `Codex ${label}: ${Math.round(left)}% remaining; ${formatRemainingTime(window)}. Use /preset to choose another workflow or /usage limits for details. No settings changed.`,
+            `Codex ${label}: ${Math.round(left)}% remaining; ${formatRemainingTime(window)}. Use /preset to choose another workflow or /codex usage limits for details. No settings changed.`,
             "warning",
           );
         }

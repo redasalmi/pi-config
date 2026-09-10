@@ -5,10 +5,11 @@ import { createUsage, snapshotsFromHeaders, mergeSnapshot } from "./usage.ts";
 import { createPresetIntegration } from "./preset-integration.ts";
 import { createServiceTier } from "./fast.ts";
 import { registerLifecycle } from "./lifecycle.ts";
-import { registerStatusCommand } from "./status.ts";
+import { createStatusCommand } from "./status.ts";
 import { createQuotaWarnings } from "./quota.ts";
-import { registerPlanning } from "./plan.ts";
-import { registerGitCommands } from "./git.ts";
+import { createPlanning } from "./plan.ts";
+import { createGitCommands } from "./git.ts";
+import { registerCodexCommand } from "./commands.ts";
 import { PROVIDER } from "./constants.ts";
 
 export default function (pi: ExtensionAPI) {
@@ -17,12 +18,25 @@ export default function (pi: ExtensionAPI) {
   const quota = createQuotaWarnings(state);
   const usage = createUsage(pi, state, { renderStatus: statusline.renderStatus, observeQuota: quota.observe });
   const tiers = createPresetIntegration(pi, state, statusline.renderStatus);
-  createServiceTier(pi, state, { renderStatus: statusline.renderStatus, persistSession: tiers.persist });
+  const tier = createServiceTier(state, { renderStatus: statusline.renderStatus, persistSession: tiers.persist });
 
   registerLifecycle(pi, state, { usage, tiers, statusline });
-  registerStatusCommand(pi, state, usage);
-  registerPlanning(pi, state);
-  registerGitCommands(pi, state);
+
+  registerCodexCommand(pi, {
+    status: createStatusCommand(pi, state, usage),
+    usage: { handler: usage.handleUsageCommand, completions: usage.usageCompletions },
+    statusline: {
+      completions: statusline.statuslineCompletions,
+      handler: async (args, ctx) => {
+        await statusline.handleStatuslineCommand(args, ctx);
+        if (state.statusline.includes("git")) await usage.loadGitBranch(ctx);
+      },
+    },
+    plan: createPlanning(pi, state),
+    ...createGitCommands(pi, state),
+    tier,
+  });
+
   pi.on("session_shutdown", () => quota.clear());
 
   pi.on("after_provider_response", (event, ctx) => {
@@ -38,22 +52,5 @@ export default function (pi: ExtensionAPI) {
     // Warn from merged windows so missing reset headers do not reset deduplication.
     quota.observe(ctx, merged);
     statusline.renderStatus(ctx);
-  });
-
-  pi.registerCommand("statusline", {
-    description: "Configure ordered Codex footer fields (quota percentages are remaining)",
-    getArgumentCompletions: statusline.statuslineCompletions,
-    handler: async (args, ctx) => {
-      await statusline.handleStatuslineCommand(args, ctx);
-      if (state.statusline.includes("git")) await usage.loadGitBranch(ctx);
-    },
-  });
-  pi.registerCommand("usage", {
-    description: "View account limits/token activity, configure warnings, or confirm a reset redemption",
-    getArgumentCompletions: (prefix) =>
-      ["limits", "daily", "weekly", "cumulative", "reset", "warnings on", "warnings off"]
-        .filter((value) => value.startsWith(prefix))
-        .map((value) => ({ value, label: value })),
-    handler: usage.handleUsageCommand,
   });
 }
