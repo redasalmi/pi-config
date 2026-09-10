@@ -1,9 +1,9 @@
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { CodexState, OriginalState, Preset, PresetSessionState } from "./types.ts";
+import type { PresetsState, OriginalState, Preset, PresetSessionState } from "./types.ts";
 import { PRESET_ENTRY_TYPE } from "./constants.ts";
-import { clearStoredPresetName, isThinkingLevel, readStoredPresetName, writeStoredPresetName } from "./storage.ts";
-import { findServiceTier } from "./service-tiers.ts";
+import { clearStoredPresetName, isThinkingLevel, readPresetDefault, writeStoredPresetName } from "./storage.ts";
+import { getServiceTierIntegration, type ServiceTierIntegration } from "./integration.ts";
 import { isRecord, notify } from "./utils.ts";
 
 type PresetDeps = { renderStatus: (ctx: ExtensionContext) => boolean };
@@ -41,9 +41,23 @@ export function savedPreset(ctx: ExtensionContext): Record<string, unknown> | un
   return entry?.type === "custom" && isRecord(entry.data) ? entry.data : undefined;
 }
 
-export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetDeps) {
+export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: PresetDeps) {
   let lastSaved: string | undefined;
   let restorePending = false;
+  let tierIntegration: ServiceTierIntegration | undefined;
+  function serviceTier(): ServiceTierIntegration | undefined {
+    return tierIntegration ??= getServiceTierIntegration(pi);
+  }
+
+  function currentTier(): string | undefined {
+    const integration = serviceTier();
+    return integration ? integration.get() : state.selectedServiceTier;
+  }
+
+  function setTier(ctx: ExtensionContext, tier: string | undefined): void {
+    state.selectedServiceTier = tier;
+    serviceTier()?.set(ctx, tier);
+  }
 
   function invalidTools(tools: string[]): string[] {
     const known = new Set(pi.getAllTools().map((tool) => tool.name));
@@ -55,7 +69,7 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
       model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined,
       thinkingLevel: pi.getThinkingLevel(),
       tools: [...pi.getActiveTools()],
-      serviceTier: state.selectedServiceTier ?? null,
+      serviceTier: currentTier() ?? null,
     };
   }
 
@@ -67,7 +81,7 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
       name: state.activePresetName ?? null,
       original: state.originalState,
       tools: [...pi.getActiveTools()],
-      serviceTier: state.selectedServiceTier ?? null,
+      serviceTier: currentTier() ?? null,
     };
     const serialized = JSON.stringify(data);
     if (serialized === lastSaved) return;
@@ -78,6 +92,10 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
   async function clearPreset(ctx: ExtensionContext, options: ApplyOptions): Promise<void> {
     const original = state.originalState;
     if (original) {
+      if (original.serviceTier && !serviceTier()) {
+        notify(ctx, "Cannot restore preset baseline: enable the Codex extension to restore its service tier", "error");
+        return;
+      }
       const invalid = invalidTools(original.tools);
       const model = original.model ? ctx.modelRegistry.find(original.model.provider, original.model.id) : undefined;
       if (invalid.length || (original.model && !model)) {
@@ -90,7 +108,7 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
       }
       pi.setThinkingLevel(original.thinkingLevel);
       pi.setActiveTools(original.tools);
-      state.selectedServiceTier = findServiceTier(ctx.model, original.serviceTier ?? undefined)?.id;
+      setTier(ctx, serviceTier()?.resolve(ctx.model, original.serviceTier ?? undefined));
     }
     state.activePresetName = undefined;
     state.activePreset = undefined;
@@ -114,7 +132,12 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
       notify(ctx, `Preset "${name}": model ${preset.provider}/${preset.model} not found`, "error");
       return false;
     }
-    const tier = findServiceTier(model, preset.serviceTier ?? undefined);
+    const integration = serviceTier();
+    if (preset.serviceTier && !integration) {
+      notify(ctx, `Preset "${name}": enable the Codex extension to use service tiers`, "error");
+      return false;
+    }
+    const tier = integration?.resolve(model, preset.serviceTier ?? undefined);
     if (preset.serviceTier && !tier) {
       notify(ctx, `Preset "${name}": unsupported service tier ${preset.serviceTier}`, "error");
       return false;
@@ -126,7 +149,7 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
     }
     if (preset.thinkingLevel) pi.setThinkingLevel(preset.thinkingLevel);
     if (preset.tools !== undefined) pi.setActiveTools([...new Set(preset.tools)]);
-    if (preset.serviceTier !== undefined) state.selectedServiceTier = tier?.id;
+    if (preset.serviceTier !== undefined) setTier(ctx, tier);
     state.originalState = original;
     state.activePresetName = name;
     state.activePreset = preset;
@@ -151,6 +174,13 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
     state.originalState = readOriginalState(data.original);
     const preset = typeof data.name === "string" ? state.presets[data.name] : undefined;
     const tools = isToolList(data.tools) ? data.tools : preset?.tools;
+    const savedTier = data.serviceTier === null || typeof data.serviceTier === "string" ? data.serviceTier : preset?.serviceTier;
+    if (savedTier && !serviceTier()) {
+      restorePending = true;
+      state.presetSelectionSource = `session (unresolved: ${data.name ?? "none"})`;
+      notify(ctx, "Saved preset requires service tiers; enable the Codex extension, or apply a preset with serviceTier: null. Saved state retained.", "error");
+      return true;
+    }
     if ((typeof data.name === "string" && !preset) || invalidTools(preset?.tools ?? []).length || (tools && invalidTools(tools).length)) {
       restorePending = true;
       state.presetSelectionSource = `session (unresolved: ${data.name ?? "none"})`;
@@ -161,7 +191,8 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
     state.activePreset = preset;
     if (tools) pi.setActiveTools(tools);
     if (data.serviceTier === null || typeof data.serviceTier === "string") {
-      state.selectedServiceTier = findServiceTier(ctx.model, data.serviceTier ?? undefined)?.id;
+      // Codex independently restores the newest tier record, including manual /tier changes.
+      state.selectedServiceTier = data.serviceTier ?? undefined;
     }
     // Pi restores model/thinking entries itself. Do not overwrite manual overrides.
     lastSaved = data.version === 2 ? JSON.stringify(data) : undefined;
@@ -171,14 +202,15 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
   function diagnostics(ctx: ExtensionContext): string {
     const preset = state.activePreset;
     const source = state.activePresetName ? state.presetSources[state.activePresetName] ?? "unknown" : "none";
+    const startupDefault = readPresetDefault();
     const actual = [
       `Preset: ${state.activePresetName ?? "none"} (selection: ${state.presetSelectionSource})`,
       `Definition: ${source}; project config ${ctx.isProjectTrusted() ? "trusted" : "ignored (untrusted)"}`,
-      `Startup default: ${readStoredPresetName() ?? "none"} (global codex.json)`,
+      `Startup default: ${startupDefault.name ?? "none"} (${startupDefault.source})`,
       `Model: ${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none"} (Pi session; preset: ${preset?.model ?? "unchanged"})`,
       `Thinking: ${pi.getThinkingLevel()} (Pi session; preset: ${preset?.thinkingLevel ?? "unchanged"})`,
       `Tools: ${pi.getActiveTools().join(", ") || "none"} (current; preset: ${preset?.tools?.join(", ") ?? "unchanged"})`,
-      `Service tier: ${state.selectedServiceTier ?? "standard"} (current; preset: ${preset?.serviceTier === null ? "standard" : preset?.serviceTier ?? "unchanged"})`,
+      `Service tier: ${currentTier() ?? "standard"} (current; preset: ${preset?.serviceTier === null ? "standard" : preset?.serviceTier ?? "unchanged"})`,
       `Instructions: ${preset?.instructions ? `from ${source}` : "none added"}`,
       `Restore baseline: ${state.originalState ? "saved in session" : "unavailable"}`,
       "Commands: /preset NAME | none | status | default NAME | default none",
@@ -222,5 +254,5 @@ export function createPresets(pi: ExtensionAPI, state: CodexState, deps: PresetD
     await applyPreset(name, preset, ctx, { persist: true, notify: true });
   }
 
-  return { applyPreset, clearPreset, restore, persist, diagnostics, getPresetOrder, getPresetCompletions, handlePresetCommand };
+  return { applyPreset, clearPreset, restore, persist, diagnostics, getPresetOrder, getPresetCompletions, handlePresetCommand, updateStatus: deps.renderStatus };
 }

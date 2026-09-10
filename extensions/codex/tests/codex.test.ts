@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPresets } from "../presets.ts";
+import { createPresetIntegration } from "../preset-integration.ts";
 import { createStatusline } from "../statusline.ts";
 import { createUsage, mergeSnapshot, redemptionOutcome, snapshotsFromHeaders, snapshotsFromUsage } from "../usage.ts";
 import { registerLifecycle } from "../lifecycle.ts";
@@ -11,8 +11,7 @@ import { registerStatusCommand } from "../status.ts";
 import { registerPlanning, validateSteps } from "../plan.ts";
 import { createQuotaWarnings } from "../quota.ts";
 import { findServiceTier, parseServiceTiers, refreshServiceTierCatalog } from "../service-tiers.ts";
-import { loadPresets } from "../storage.ts";
-import { PLAN_ENTRY_TYPE, PRESET_ENTRY_TYPE, STALE_AFTER_MS } from "../constants.ts";
+import { PLAN_ENTRY_TYPE, STALE_AFTER_MS } from "../constants.ts";
 import codex from "../index.ts";
 import { harness, model } from "./helpers.ts";
 
@@ -34,9 +33,8 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-function setupPresets(h = harness()) {
-  const presets = createPresets(h.pi, h.state, { renderStatus: () => true });
-  return { h, presets };
+function setupTiers(h = harness()) {
+  return { tiers: createPresetIntegration(h.pi, h.state, () => true) };
 }
 function setupUsage(h = harness()) {
   const usage = createUsage(h.pi, h.state, { renderStatus: () => true, observeQuota: () => {} });
@@ -44,193 +42,6 @@ function setupUsage(h = harness()) {
 }
 const response = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
 const usageBody = () => ({ rate_limit: { primary_window: { used_percent: 25, reset_after_seconds: 600, limit_window_seconds: 18000 } }, rate_limit_reset_credits: { available_count: 2 } });
-
-// Preset round trips and validation.
-test("invalid tools reject the whole preset before model/thinking/state mutation", async () => {
-  const { h, presets } = setupPresets();
-  const before = h.pi.getActiveTools();
-  const applied = await presets.applyPreset("broken", { provider: "openai-codex", model: "other-model", thinkingLevel: "high", tools: ["typo"] }, h.ctx, { persist: true, notify: false });
-  assert.equal(applied, false);
-  assert.equal(h.ctx.model?.id, "test-model");
-  assert.equal(h.pi.getThinkingLevel(), "medium");
-  assert.deepEqual(h.pi.getActiveTools(), before);
-  assert.equal(h.state.originalState, undefined);
-  assert.equal(h.entries.length, 0);
-  assert.match(h.notices[0], /unknown tools/);
-});
-
-test("partially invalid tools also reject rather than silently changing capabilities", async () => {
-  const { h, presets } = setupPresets();
-  assert.equal(await presets.applyPreset("broken", { tools: ["read", "typo"] }, h.ctx, { persist: true, notify: true }), false);
-  assert.ok(h.pi.getActiveTools().includes("write"));
-});
-
-test("empty tool lists are valid and restored by clearing the preset", async () => {
-  const { h, presets } = setupPresets();
-  const before = h.pi.getActiveTools();
-  await presets.applyPreset("empty", { tools: [] }, h.ctx, { persist: true, notify: true });
-  assert.deepEqual(h.pi.getActiveTools(), []);
-  await presets.clearPreset(h.ctx, { persist: true, notify: true });
-  assert.deepEqual(h.pi.getActiveTools(), before);
-});
-
-test("failed model authentication leaves the preset baseline and settings untouched", async () => {
-  const { h, presets } = setupPresets();
-  h.setAuth(false);
-  assert.equal(await presets.applyPreset("other", { provider: "openai-codex", model: "other-model", tools: [] }, h.ctx, { persist: true, notify: true }), false);
-  assert.equal(h.state.originalState, undefined);
-  assert.equal(h.entries.length, 0);
-});
-
-test("persisted baseline survives extension replacement; manual model/thinking overrides survive restoration", async () => {
-  const { h, presets } = setupPresets();
-  const preset = { provider: "openai-codex", model: "other-model", thinkingLevel: "high" as const, tools: ["read"], serviceTier: "Fast" };
-  h.state.presets.custom = preset;
-  const originalTools = h.pi.getActiveTools();
-  await presets.applyPreset("custom", preset, h.ctx, { persist: true, notify: true });
-  assert.deepEqual(h.state.originalState?.model, { provider: "openai-codex", id: "test-model" });
-  h.pi.setThinkingLevel("low");
-  await h.pi.setModel(h.models[0]);
-  const replacement = setupPresets(h);
-  assert.equal(replacement.presets.restore(h.ctx), true);
-  assert.equal(h.pi.getThinkingLevel(), "low");
-  assert.equal(h.ctx.model?.id, "test-model");
-  await replacement.presets.clearPreset(h.ctx, { persist: true, notify: true });
-  assert.equal(h.pi.getThinkingLevel(), "medium");
-  assert.deepEqual(h.pi.getActiveTools(), originalTools);
-  assert.equal(h.state.selectedServiceTier, undefined);
-});
-
-for (const unavailable of ["definition", "definition tools", "saved tools"] as const) {
-  test(`unavailable preset ${unavailable} retains its saved state and independently recoverable baseline`, async () => {
-    const { h, presets } = setupPresets();
-    const originalTools = h.pi.getActiveTools();
-    const preset = { thinkingLevel: "high" as const, tools: ["read"] };
-    h.state.presets.custom = preset;
-    await presets.applyPreset("custom", preset, h.ctx, { persist: true, notify: false });
-    if (unavailable === "definition") delete h.state.presets.custom;
-    if (unavailable === "definition tools") h.state.presets.custom = { tools: ["missing-tool"] };
-    if (unavailable === "saved tools") {
-      h.pi.setActiveTools(["missing-tool"]);
-      presets.persist(h.ctx);
-      h.pi.setActiveTools(originalTools);
-    }
-    const saved = structuredClone(h.entries);
-    const replacement = setupPresets(h).presets;
-    assert.equal(replacement.restore(h.ctx), true);
-    assert.equal(h.state.activePreset, undefined);
-    assert.equal(h.state.originalState?.thinkingLevel, "medium");
-    assert.match(replacement.diagnostics(h.ctx), /unresolved: custom/);
-    replacement.persist(h.ctx);
-    assert.deepEqual(h.entries, saved);
-
-    // Failed explicit changes must not release the persistence guard either.
-    assert.equal(await replacement.applyPreset("bad", { tools: ["missing-tool"] }, h.ctx, { persist: true, notify: false }), false);
-    h.setAuth(false);
-    await replacement.clearPreset(h.ctx, { persist: true, notify: false });
-    replacement.persist(h.ctx);
-    assert.deepEqual(h.entries, saved);
-    h.setAuth(true);
-    await replacement.clearPreset(h.ctx, { persist: true, notify: false });
-    assert.equal(h.pi.getThinkingLevel(), "medium");
-    assert.deepEqual(h.pi.getActiveTools(), originalTools);
-    assert.equal(h.state.originalState, undefined);
-    assert.equal(h.entries.length, saved.length + 1);
-  });
-}
-
-test("startup and shutdown preserve a missing preset so restoring its definition can recover the selection", async (t) => {
-  const { h, presets } = setupPresets();
-  Object.assign(h.ctx, { hasUI: false });
-  t.mock.method(console, "error", () => {});
-  const preset = { thinkingLevel: "high" as const, tools: ["read"], instructions: "Stay focused" };
-  await presets.applyPreset("custom", preset, h.ctx, { persist: true, notify: false });
-  const saved = structuredClone(h.entries);
-  const { usage } = setupUsage(h);
-  registerLifecycle(h.pi, h.state, { presets, usage, statusline: createStatusline(h.state, { pi: h.pi }) });
-  await h.emit("session_start", { reason: "reload" });
-  await h.emit("session_shutdown");
-  assert.deepEqual(h.entries, saved);
-  h.state.presets.custom = preset;
-  const replacement = setupPresets(h).presets;
-  assert.equal(replacement.restore(h.ctx), true);
-  assert.equal(h.state.activePresetName, "custom");
-  assert.equal(h.state.activePreset?.instructions, "Stay focused");
-  replacement.persist(h.ctx);
-  assert.deepEqual(h.entries, saved);
-});
-
-test("explicitly applying another preset resolves pending restoration without replacing the original baseline", async () => {
-  const { h, presets } = setupPresets();
-  await presets.applyPreset("missing", { thinkingLevel: "high" }, h.ctx, { persist: true, notify: false });
-  const saved = structuredClone(h.entries);
-  presets.restore(h.ctx);
-  await presets.applyPreset("replacement", { thinkingLevel: "low" }, h.ctx, { persist: true, notify: false });
-  assert.equal(h.state.activePresetName, "replacement");
-  assert.equal(h.state.originalState?.thinkingLevel, "medium");
-  assert.equal(h.entries.length, saved.length + 1);
-  await presets.clearPreset(h.ctx, { persist: true, notify: false });
-  assert.equal(h.pi.getThinkingLevel(), "medium");
-});
-
-test("explicit none on resume does not fall back to another session's global default", async () => {
-  const h = harness();
-  Object.assign(h.ctx, { hasUI: false });
-  await writeFile(join(directory, "codex.json"), JSON.stringify({ preset: "work" }));
-  h.pi.appendEntry(PRESET_ENTRY_TYPE, { name: null });
-  const { presets } = setupPresets(h);
-  const { usage } = setupUsage(h);
-  registerLifecycle(h.pi, h.state, { presets, usage, statusline: createStatusline(h.state, { pi: h.pi }) });
-  await h.emit("session_start", { reason: "resume" });
-  assert.equal(h.state.activePresetName, undefined);
-  assert.equal(h.ctx.model?.id, "test-model");
-  await h.emit("session_shutdown");
-});
-
-test("reload does not reapply the old CLI preset over session state", async () => {
-  const h = harness();
-  Object.assign(h.ctx, { hasUI: false });
-  h.flags.set("preset", "work");
-  h.pi.appendEntry(PRESET_ENTRY_TYPE, { name: null });
-  const { presets } = setupPresets(h);
-  const { usage } = setupUsage(h);
-  registerLifecycle(h.pi, h.state, { presets, usage, statusline: createStatusline(h.state, { pi: h.pi }) });
-  await h.emit("session_start", { reason: "reload" });
-  assert.equal(h.state.activePresetName, undefined);
-  assert.equal(h.notices.length, 0);
-  await h.emit("session_shutdown");
-});
-
-test("session preset changes do not write defaults; saving a default does not change the session", async () => {
-  const { h, presets } = setupPresets();
-  h.state.presets.custom = { thinkingLevel: "high" };
-  await presets.handlePresetCommand("custom", h.ctx);
-  await assert.rejects(readFile(join(directory, "codex.json")), { code: "ENOENT" });
-  await presets.handlePresetCommand("default none", h.ctx);
-  assert.equal(JSON.parse(await readFile(join(directory, "codex.json"), "utf8")).preset, null);
-  assert.equal(h.state.activePresetName, "custom");
-});
-
-test("presets accept advertised tiers and reject unsupported tiers atomically", async () => {
-  const { h, presets } = setupPresets();
-  assert.equal(await presets.applyPreset("tier", { serviceTier: "nonexistent", tools: [] }, h.ctx, { persist: true, notify: true }), false);
-  assert.ok(h.pi.getActiveTools().length);
-  await presets.applyPreset("tier", { serviceTier: "Fast" }, h.ctx, { persist: true, notify: true });
-  assert.equal(h.state.selectedServiceTier, "priority");
-});
-
-test("preset provenance respects project trust", async () => {
-  await writeFile(join(directory, "presets.json"), JSON.stringify({ custom: { thinkingLevel: "low" } }));
-  await mkdir(join(directory, ".pi"));
-  await writeFile(join(directory, ".pi", "presets.json"), JSON.stringify({ custom: { thinkingLevel: "high" } }));
-  const loaded = loadPresets(directory, false);
-  assert.equal(loaded.presets.custom.thinkingLevel, "low");
-  assert.match(loaded.sources.custom, /^global:/);
-  assert.equal(loaded.sources.work, "built-in");
-  const trusted = loadPresets(directory, true);
-  assert.equal(trusted.presets.custom.thinkingLevel, "high");
-  assert.match(trusted.sources.custom, /^trusted project:/);
-});
 
 // No filesystem work is needed after catalog refresh.
 test("tier catalog caches negative results and refresh invalidates them", async () => {
@@ -254,6 +65,22 @@ test("catalog entries without tiers do not mask later explicit overrides", async
   await writeFile(second, JSON.stringify({ providers: { "openai-codex": { models: [{ id: target.id, service_tiers: ["fast"] }] } } }));
   await refreshServiceTierCatalog([first, second]);
   assert.equal(findServiceTier(target, "fast")?.id, "fast");
+});
+
+test("Codex-only startup tiers survive tree navigation before shutdown", async (t) => {
+  await writeFile(join(directory, "codex.json"), JSON.stringify({ serviceTier: "priority", statusline: [], quotaWarnings: false }));
+  const h = harness();
+  codex(h.pi);
+  t.after(() => h.emit("session_shutdown"));
+  await h.emit("session_start", { reason: "startup" });
+  await h.emit("before_agent_start", { systemPrompt: "Base" });
+  assert.deepEqual((await h.emit("before_provider_request", { payload: {} }))[0], { service_tier: "priority" });
+  const startupBranch = [...h.entries];
+  await h.command("tier", "off");
+  h.entries = startupBranch;
+  await h.emit("session_tree");
+  assert.deepEqual((await h.emit("before_provider_request", { payload: {} }))[0], { service_tier: "priority" });
+  assert.equal(h.entries.some((entry) => entry.type === "custom" && entry.customType === "preset-state"), false);
 });
 
 // Usage freshness, cancellation, and confirmed redemption.
@@ -380,6 +207,64 @@ test("quota warnings fire once per threshold/window, never mutate configuration"
   assert.equal(h.notices.length, 3);
   assert.equal(h.state.activePresetName, undefined);
   assert.equal(h.entries.length, 0);
+});
+
+test("statusline is hidden for non-OpenAI or missing models even with cached data", () => {
+  const h = harness();
+  h.state.statusline = ["preset", "thinking", "context", "usage", "credits", "git"];
+  h.state.activePresetName = "work";
+  h.state.gitBranch = "main";
+  h.state.resetCreditCount = 2;
+  h.state.statusStale = true;
+  h.state.snapshots.set("codex", { limitId: "codex", primary: { used_percent: 25 } });
+  h.ctx.getContextUsage = () => { throw new Error("Hidden footer must not calculate context"); };
+  const statusline = createStatusline(h.state, { pi: h.pi });
+  for (const selectedModel of [
+    { ...model(), provider: "anthropic", api: "anthropic-messages" },
+    { ...model(), provider: "ollama", api: "openai-completions" },
+    undefined,
+  ]) {
+    Object.defineProperty(h.ctx, "model", { configurable: true, value: selectedModel });
+    h.statuses.set("codex", "previous footer");
+    assert.equal(statusline.renderStatus(h.ctx), true);
+    assert.equal(h.statuses.get("codex"), undefined);
+  }
+  assert.equal(h.state.snapshots.size, 1);
+});
+
+test("statusline follows model selection and stays hidden during lifecycle refreshes", async (t) => {
+  const h = harness();
+  h.state.statusline = ["model", "thinking"];
+  h.state.quotaWarnings = false;
+  const { tiers } = setupTiers(h);
+  const { usage } = setupUsage(h);
+  const statusline = createStatusline(h.state, { pi: h.pi });
+  registerLifecycle(h.pi, h.state, { tiers, usage, statusline });
+  t.after(() => h.emit("session_shutdown"));
+  for (const provider of ["openai-codex", "anthropic", "openai", "google", "openai-codex"]) {
+    await h.pi.setModel({ ...model(), provider });
+    await h.emit("model_select", { model: h.ctx.model, source: "set" });
+    for (const event of ["thinking_level_select", "session_compact", "agent_settled"]) {
+      await h.emit(event);
+      if (provider === "openai" || provider === "openai-codex") {
+        assert.match(h.statuses.get("codex")!, /^Codex Model:/);
+      } else {
+        assert.equal(h.statuses.get("codex"), undefined);
+      }
+    }
+  }
+});
+
+test("statusline stays hidden when starting with a non-OpenAI model", async (t) => {
+  const h = harness();
+  await h.pi.setModel({ ...model(), provider: "anthropic" });
+  await writeFile(join(directory, "codex.json"), JSON.stringify({ statusline: ["model", "thinking"], quotaWarnings: false }));
+  const { tiers } = setupTiers(h);
+  const { usage } = setupUsage(h);
+  registerLifecycle(h.pi, h.state, { tiers, usage, statusline: createStatusline(h.state, { pi: h.pi }) });
+  t.after(() => h.emit("session_shutdown"));
+  await h.emit("session_start", { reason: "startup" });
+  assert.equal(h.statuses.get("codex"), undefined);
 });
 
 test("statusline honors usage ordering and skips unused context calculations", () => {

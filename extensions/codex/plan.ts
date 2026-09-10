@@ -8,7 +8,7 @@ import { isRecord, notify } from "./utils.ts";
 
 // A tool-call guard, not an OS sandbox. Unknown tools fail closed, including
 // shell, browser automation, and any dynamically activated write-capable tool.
-export const PLANNING_TOOLS = new Set(["read", "grep", "find", "ls", "fffind", "ffgrep", "web_search", "web_fetch", "update_plan"]);
+export const PLANNING_TOOLS = new Set(["read", "grep", "find", "ls", "web_search", "web_fetch", "update_plan"]);
 const STEP_STATUSES = ["pending", "in_progress", "completed"] as const;
 const PLAN_PARAMS = Type.Object({
   plan: Type.Array(Type.Object({

@@ -1,7 +1,7 @@
 # Codex workflow extension
 
-A small Pi workflow layer inspired by Codex CLI: session presets, service tiers,
-account limits, planning/checklists, and local diff/review commands. It reuses Pi's
+A small Pi workflow layer inspired by Codex CLI: service tiers, account limits,
+planning/checklists, and local diff/review commands. It reuses Pi's
 models, authentication, sessions, and provider transport. No Codex CLI installation
 or additional dependency is required.
 
@@ -9,12 +9,6 @@ or additional dependency is required.
 
 | Command | Behavior |
 | --- | --- |
-| `/preset NAME` | Apply a preset to this session only. |
-| `/preset` | Choose a session preset. Ctrl+Shift+U cycles presets. |
-| `/preset none` | Clear the preset and restore the saved pre-preset configuration. |
-| `/preset default NAME` / `/preset default none` | Save/clear the startup default without changing the current session. |
-| `/preset status` | Show the effective configuration, preset definition source, selection scope, and restore-baseline availability. |
-| `pi --preset NAME` | Override the preset at process startup. `--preset none` disables it. |
 | `/tier NAME` / `/tier off` | Set/clear the session's model-advertised service tier. |
 | `/tier save NAME` / `/tier save off` | Save/clear the startup tier without changing this session. |
 | `/tier` | Refresh tier metadata and list the active model's supported tiers. |
@@ -38,67 +32,34 @@ or additional dependency is required.
 | `/review` | Choose a review scope interactively. |
 
 Dialogs and informational output work in the TUI and compatible RPC clients.
-Named preset flags also work in print/JSON mode. Informational slash-command
-output is not written to non-interactive stdout, to avoid corrupting Pi's protocol.
+Informational slash-command output is not written to non-interactive stdout,
+to avoid corrupting Pi's protocol.
 
-## Presets and persistence
+## Presets and service-tier persistence
 
-Preset definitions come from these layers, in increasing precedence:
+`/preset`, `--preset`, Ctrl+Shift+U, preset definitions, and baseline restoration
+now belong to the standalone [Presets extension](../presets/README.md). Enable
+that extension to retain those commands. Codex alone does not apply preset defaults
+or change models/tools from saved presets.
 
-1. Built-in `astra`, `quick`, `work`, and `deep` presets.
-2. `presets.json` in Pi's agent directory.
-3. `<cwd>/.pi/presets.json`, only when Pi trusts the project.
+With both enabled, Codex's `preset` footer field and `/status` reflect Presets'
+selection through Pi's event bus. Presets can use Codex's optional service-tier
+integration; validation and provider request routing remain owned by Codex.
 
-A same-named definition replaces the whole earlier preset, not individual fields.
-Pi distributions with a different config-directory name use that name instead of
-`.pi`. The agent directory respects `PI_CODING_AGENT_DIR`.
+Codex settings remain in `codex.json` in Pi's agent directory. `/tier NAME`
+changes only the session; `/tier save NAME` changes only the startup default.
+Manual session tiers persist as `codex-service-tier` records and follow tree
+navigation, even without Presets. Existing tiers in `preset-state` records remain
+readable; the newest applicable tier record on the active branch wins.
 
-Example `presets.json` (replace the model with one available to your account):
-
-```json
-{
-  "focused": {
-    "provider": "openai-codex",
-    "model": "gpt-5.6-luna",
-    "thinkingLevel": "high",
-    "tools": ["read", "bash", "edit", "write", "update_plan"],
-    "serviceTier": null,
-    "instructions": "Keep changes focused and report verification evidence.",
-    "description": "Focused implementation with standard routing"
-  }
-}
-```
-
-Omitted fields keep their current values when applying a preset. `tools: []`
-intentionally disables all tools. Unknown tools or an unsupported explicit tier
-reject the entire preset before settings change. A service tier is its advertised
-ID or display name; `null` clears it. No model-family guesses or hardcoded Fast
-routing values are sent.
-
-Explicit CLI selection wins at startup. Otherwise, a saved session selection
-(including explicit `none`) wins over the global default. Defaults live in
-`codex.json` in Pi's agent directory. Session state stores the baseline using
-model identifiers, thinking level, tool names, and tier—not credentials or model
-objects. Preset instructions remain in the trusted configuration files.
-
-Reload/resume restore the preset's instructions and tool/tier state without
-reapplying its model/thinking values over Pi's restored manual overrides. Tree
-navigation restores branch-local preset instructions/tools/tier; Pi retains
-ownership of model/thinking navigation behavior. Explicitly applying another
-preset changes only fields that preset specifies.
-
-**Migration:** `/preset NAME`, `/preset none`, and `/tier NAME` no longer silently
-write global defaults. Existing `codex.json` defaults still work. Use the explicit
-`default`/`save` commands to change them. Old name-only session records have no
-recoverable pre-preset baseline; clearing those records keeps the current
-model/tools and explains that limitation. Missing models/tools can prevent an
-old baseline from being restored; the extension reports that rather than claiming
-success.
+Presets reads the legacy `codex.json` preset default until a new
+`presets-state.json` exists. Codex writes preserve the legacy field; no automatic
+configuration rewrite or session migration is needed.
 
 ## Planning and review boundaries
 
 Planning blocks agent calls to every tool except `read`, `grep`, `find`, `ls`,
-`fffind`, `ffgrep`, `web_search`, `web_fetch`, and its own `update_plan` tool.
+`web_search`, `web_fetch`, and its own `update_plan` tool.
 Shell, browser automation, and unknown/dynamically added tools are blocked even
 if a preset enables them. Planning adds its own checklist tool when necessary;
 it does not replace the rest of your active tool set.
@@ -137,6 +98,8 @@ mutate files or external services.
 ## Usage and performance
 
 The compact footer prioritizes information not already in Pi's native footer.
+It is shown only for models from the `openai` and `openai-codex` providers and
+hides automatically when another provider (or no model) is selected.
 Quota percentages are **remaining**, not used. Available fields:
 `preset,model,thinking,fast,service-tier,context,usage,credits,git`.
 Ordering is respected, including `usage` and reset credits. Saved footer layouts

@@ -1,20 +1,18 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CodexState } from "./types.ts";
 import { DEFAULT_STATUSLINE, PROVIDER, STATUS_KEY, isRecord } from "./constants.ts";
-import { loadPresets, readCodexDefaults } from "./storage.ts";
+import { readCodexDefaults } from "./storage.ts";
 import { findServiceTier, refreshServiceTierCatalog } from "./service-tiers.ts";
-import { notify } from "./utils.ts";
-import type { createPresets } from "./presets.ts";
+import type { createPresetIntegration } from "./preset-integration.ts";
 import type { createStatusline } from "./statusline.ts";
 import type { createUsage } from "./usage.ts";
 
 export function registerLifecycle(pi: ExtensionAPI, state: CodexState, deps: {
   usage: ReturnType<typeof createUsage>;
-  presets: ReturnType<typeof createPresets>;
+  tiers: ReturnType<typeof createPresetIntegration>;
   statusline: ReturnType<typeof createStatusline>;
 }): void {
   let timer: ReturnType<typeof setInterval> | undefined;
-  let initialTools: string[] = [];
   const wantsUsage = () => state.statusline.some((item) => item === "usage" || item === "credits");
   function refreshLocal(ctx: ExtensionContext): void {
     deps.statusline.renderStatus(ctx);
@@ -24,34 +22,17 @@ export function registerLifecycle(pi: ExtensionAPI, state: CodexState, deps: {
   pi.on("session_shutdown", (_event, ctx) => {
     clearInterval(timer);
     timer = undefined;
-    deps.presets.persist(ctx);
+    deps.tiers.persist(ctx);
+    deps.tiers.dispose();
     deps.usage.cancelAll();
     ctx.ui.setStatus(STATUS_KEY, undefined);
   });
 
-  pi.on("session_start", async (event, ctx) => {
-    const loaded = loadPresets(ctx.cwd, ctx.isProjectTrusted());
-    state.presets = loaded.presets;
-    state.presetSources = loaded.sources;
+  pi.on("session_start", async (_event, ctx) => {
     const defaults = readCodexDefaults();
     state.statusline = defaults.statusline ?? [...DEFAULT_STATUSLINE];
     state.quotaWarnings = defaults.quotaWarnings ?? true;
-    state.selectedServiceTier = defaults.serviceTier ?? undefined;
-    initialTools = [...pi.getActiveTools()];
-    await refreshServiceTierCatalog();
-    const flag = pi.getFlag("preset");
-    // A CLI flag is a startup override, not a command to reapply on every /reload.
-    const presetFlag = event.reason === "startup" && typeof flag === "string" ? flag.trim() : "";
-    const restored = deps.presets.restore(ctx);
-    const name = presetFlag || (!restored ? defaults.preset : undefined);
-    if (name === "none") {
-      await deps.presets.clearPreset(ctx, { persist: true, notify: Boolean(presetFlag), source: "CLI --preset" });
-    } else if (name) {
-      if (Object.hasOwn(state.presets, name)) await deps.presets.applyPreset(name, state.presets[name], ctx, { persist: true, notify: Boolean(presetFlag), source: presetFlag ? "CLI --preset" : "global default" });
-      else notify(ctx, `Unknown preset "${name}". Use /preset status to inspect configuration.`, "warning");
-    }
-    state.selectedServiceTier = findServiceTier(ctx.model, state.selectedServiceTier)?.id;
-    deps.presets.persist(ctx);
+    await deps.tiers.initialize(ctx);
     refreshLocal(ctx);
     if (!ctx.hasUI) return;
     if (wantsUsage() || state.quotaWarnings) deps.usage.scheduleRefresh(ctx, true);
@@ -64,11 +45,7 @@ export function registerLifecycle(pi: ExtensionAPI, state: CodexState, deps: {
   });
 
   pi.on("session_tree", (_event, ctx) => {
-    if (!deps.presets.restore(ctx)) {
-      pi.setActiveTools(initialTools);
-      state.selectedServiceTier = undefined;
-      state.presetSelectionSource = "session branch (none)";
-    }
+    deps.tiers.restore(ctx);
     refreshLocal(ctx);
   });
   pi.on("agent_settled", (_event, ctx) => {

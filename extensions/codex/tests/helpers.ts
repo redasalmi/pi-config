@@ -1,6 +1,7 @@
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, SessionEntry, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createCodexState } from "../state.ts";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 
 export function model(id = "test-model", tiers = true): Model<"openai-codex-responses"> {
   return {
@@ -19,6 +20,8 @@ export function harness() {
   const state = createCodexState();
   const handlers = new Map<string, Handler[]>();
   const commands = new Map<string, Command>();
+  const shortcuts = new Map<string, { handler: (ctx: ExtensionCommandContext) => Promise<void> }>();
+  const registeredFlags = new Set<string>();
   const tools = new Map<string, ToolDefinition<any, any>>();
   const notices: string[] = [];
   const messages: Array<{ text: string; options: any }> = [];
@@ -32,10 +35,15 @@ export function harness() {
   const flags = new Map<string, unknown>();
   const models = [activeModel, model("other-model")];
   const pi = {
+    events: createEventBus(),
     on(event: string, handler: Handler) { handlers.set(event, [...(handlers.get(event) ?? []), handler]); },
-    registerCommand(name: string, command: Command) { commands.set(name, command); },
+    registerCommand(name: string, command: Command) {
+      if (commands.has(name)) throw new Error(`Duplicate command ${name}`);
+      commands.set(name, command);
+    },
     registerTool(tool: ToolDefinition<any, any>) { tools.set(tool.name, tool); },
-    registerShortcut() {}, registerFlag() {},
+    registerShortcut(key: string, shortcut: { handler: (ctx: ExtensionCommandContext) => Promise<void> }) { shortcuts.set(key, shortcut); },
+    registerFlag(name: string) { registeredFlags.add(name); },
     getFlag(name: string) { return flags.get(name); },
     getThinkingLevel: () => thinking,
     setThinkingLevel(level: typeof thinking) { thinking = level; },
@@ -73,7 +81,7 @@ export function harness() {
   } as unknown as ExtensionCommandContext;
   const api = pi as unknown as ExtensionAPI;
   return {
-    state, pi: api, rawPi: pi, ctx, notices, messages, statuses, widgets, tools, commands, flags, models,
+    state, pi: api, rawPi: pi, ctx, notices, messages, statuses, widgets, tools, commands, shortcuts, registeredFlags, flags, models,
     get entries() { return entries; },
     set entries(value: SessionEntry[]) { entries = value; },
     setAuth(value: boolean) { configuredAuth = value; },

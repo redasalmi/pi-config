@@ -66,12 +66,28 @@ The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
 `PATH` for the corresponding backends. These external CLIs are not installed by
 this package.
 
+## Presets
+
+The [Presets extension](extensions/presets/README.md) owns `/preset`, `--preset`,
+and Ctrl+Shift+U for session-scoped model/thinking/tools/instructions. It works
+independently of Codex; enabling both preserves service-tier and statusline
+integration. Existing definitions and session records remain compatible.
+Use `/preset status` for configuration sources. Run `npm run test:presets`.
+
 ## Codex workflow
 
-The [Codex extension](extensions/codex/README.md) adds session-scoped presets,
-service tiers, quota reporting, planning/checklists, and local diff/review commands.
-Use `/preset status` for configuration sources and `/status` for current state.
+The [Codex extension](extensions/codex/README.md) adds service tiers, quota
+reporting, planning/checklists, and local diff/review commands.
+Use `/status` for current state; preset selection belongs to Presets.
 Run its isolated regression tests with `npm run test:codex`.
+
+## OpenCode Go
+
+The [OpenCode extension](extensions/opencode/README.md) adds remaining-quota
+reporting, reset times, low-quota warnings, branch-local usage statistics, and a
+configurable Go footer. It reuses Pi's Go provider and authentication; model
+selection stays with Pi. Start with `/opencode status` or `/opencode usage`.
+Run its isolated regression tests with `npm run test:opencode`.
 
 ## Notifications
 

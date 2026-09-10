@@ -1,4 +1,4 @@
-import { DEFAULT_PRESETS, DEFAULT_STATUSLINE } from "./constants.ts";
+import { DEFAULT_STATUSLINE } from "./constants.ts";
 import type { CodexState } from "./types.ts";
 
 export function createCodexState(): CodexState {
@@ -11,12 +11,8 @@ export function createCodexState(): CodexState {
     refreshPromise: undefined,
     refreshAbortController: undefined,
     statusStale: false,
-    presets: { ...DEFAULT_PRESETS },
-    presetSources: {},
     presetSelectionSource: "none",
     activePresetName: undefined,
-    activePreset: undefined,
-    originalState: undefined,
     selectedServiceTier: undefined,
     statusline: [...DEFAULT_STATUSLINE],
     tokenUsage: undefined,

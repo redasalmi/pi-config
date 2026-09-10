@@ -1,27 +1,27 @@
 import { Key } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { CodexState } from "./types.ts";
+import type { PresetsState } from "./types.ts";
 import { notify } from "./utils.ts";
 import type { createPresets } from "./presets.ts";
 
 export function registerPresetCommands(
   pi: ExtensionAPI,
-  state: CodexState,
+  state: PresetsState,
   presets: ReturnType<typeof createPresets>,
 ): void {
   pi.registerFlag("preset", {
-    description: "Start with a named Codex preset",
+    description: "Start with a named session preset",
     type: "string",
   });
 
   pi.registerCommand("preset", {
-    description: "Switch Codex preset configuration",
+    description: "Switch session preset configuration",
     getArgumentCompletions: presets.getPresetCompletions,
     handler: presets.handlePresetCommand,
   });
 
   pi.registerShortcut(Key.ctrlShift("u"), {
-    description: "Cycle Codex presets",
+    description: "Cycle session presets",
     handler: async (ctx: ExtensionContext) => {
       if (!ctx.isIdle()) {
         notify(ctx, "Wait for the current task to finish before changing presets", "warning");

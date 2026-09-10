@@ -1,7 +1,7 @@
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CodexState, StatuslineItem } from "./types.ts";
-import { DEFAULT_STATUSLINE, STALE_AFTER_MS, STATUSLINE_ITEMS, STATUS_KEY } from "./constants.ts";
+import { DEFAULT_STATUSLINE, PROVIDER, STALE_AFTER_MS, STATUSLINE_ITEMS, STATUS_KEY } from "./constants.ts";
 import { writeStoredStatusline } from "./storage.ts";
 import { formatLimitName } from "./usage.ts";
 import { findServiceTier, isFastTier, isUltrafastTier } from "./service-tiers.ts";
@@ -13,6 +13,10 @@ export function createStatusline(state: CodexState, deps: StatuslineDeps) {
   function renderStatus(ctx: ExtensionContext): boolean {
     const hasData = state.snapshots.size > 0 || state.resetCreditCount !== undefined;
     if (!ctx.hasUI) return hasData;
+    if (ctx.model?.provider !== "openai" && ctx.model?.provider !== PROVIDER) {
+      ctx.ui.setStatus(STATUS_KEY, undefined);
+      return hasData;
+    }
     const parts: string[] = [];
     const codex = state.snapshots.get("codex");
     const context = state.statusline.includes("context") ? ctx.getContextUsage() : undefined;

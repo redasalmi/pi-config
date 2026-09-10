@@ -1,125 +1,42 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
-import type { CodexDefaults, Preset, PresetsConfig, StatuslineItem, ThinkingLevel } from "./types.ts";
-import {
-  DEFAULT_PRESETS,
-  DEFAULT_STATUSLINE,
-  PRESETS_CONFIG_FILE,
-  STATE_FILE,
-  STATUSLINE_ITEMS,
-  THINKING_LEVELS,
-} from "./constants.ts";
-import { isRecord } from "./constants.ts";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { CodexDefaults, StatuslineItem } from "./types.ts";
+import { DEFAULT_STATUSLINE, STATE_FILE, STATUSLINE_ITEMS, isRecord } from "./constants.ts";
 
-export function readCodexDefaults(): CodexDefaults {
+function readDefaultsFile(): Record<string, unknown> {
   const path = join(getAgentDir(), STATE_FILE);
   if (!existsSync(path)) return {};
-
   try {
     const value: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (!isRecord(value)) return {};
-    const statusline = Array.isArray(value.statusline)
-      ? value.statusline.filter(
-          (item): item is StatuslineItem =>
-            typeof item === "string" && STATUSLINE_ITEMS.includes(item as StatuslineItem),
-        )
-      : undefined;
-    return {
-      ...(typeof value.preset === "string" || value.preset === null ? { preset: value.preset } : {}),
-      ...(typeof value.serviceTier === "string" || value.serviceTier === null
-        ? { serviceTier: value.serviceTier }
-        : {}),
-      ...(statusline ? { statusline: [...new Set(statusline)] } : {}),
-      ...(typeof value.quotaWarnings === "boolean" ? { quotaWarnings: value.quotaWarnings } : {}),
-    };
+    return isRecord(value) ? value : {};
   } catch {
     return {};
   }
 }
 
+export function readCodexDefaults(): CodexDefaults {
+  const value = readDefaultsFile();
+  const statusline = Array.isArray(value.statusline)
+    ? value.statusline.filter(
+        (item): item is StatuslineItem =>
+          typeof item === "string" && STATUSLINE_ITEMS.includes(item as StatuslineItem),
+      )
+    : undefined;
+  return {
+    ...(typeof value.serviceTier === "string" || value.serviceTier === null
+      ? { serviceTier: value.serviceTier }
+      : {}),
+    ...(statusline ? { statusline: [...new Set(statusline)] } : {}),
+    ...(typeof value.quotaWarnings === "boolean" ? { quotaWarnings: value.quotaWarnings } : {}),
+  };
+}
+
 export function writeCodexDefaults(update: Partial<CodexDefaults>): void {
   const path = join(getAgentDir(), STATE_FILE);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify({ ...readCodexDefaults(), ...update }, null, 2)}\n`, "utf8");
-}
-
-export function isThinkingLevel(value: unknown): value is ThinkingLevel {
-  return typeof value === "string" && THINKING_LEVELS.includes(value as ThinkingLevel);
-}
-
-export function isPreset(value: unknown): value is Preset {
-  if (!isRecord(value)) return false;
-  if (value.provider !== undefined && typeof value.provider !== "string") return false;
-  if (value.model !== undefined && typeof value.model !== "string") return false;
-  if (value.thinkingLevel !== undefined && !isThinkingLevel(value.thinkingLevel)) return false;
-  if (
-    value.tools !== undefined &&
-    (!Array.isArray(value.tools) || !value.tools.every((tool) => typeof tool === "string"))
-  ) {
-    return false;
-  }
-  if (value.instructions !== undefined && typeof value.instructions !== "string") return false;
-  if (value.description !== undefined && typeof value.description !== "string") return false;
-  if (value.serviceTier !== undefined && value.serviceTier !== null && typeof value.serviceTier !== "string") return false;
-  return (value.provider === undefined) === (value.model === undefined);
-}
-
-function loadPresetFile(path: string): PresetsConfig {
-  if (!existsSync(path)) return {};
-
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (!isRecord(parsed)) throw new Error("top-level value must be an object");
-
-    const presets: PresetsConfig = Object.create(null);
-    for (const [name, value] of Object.entries(parsed)) {
-      if (!name.trim()) continue;
-      if (!isPreset(value)) {
-        console.error(`Ignoring invalid preset "${name}" in ${path}`);
-        continue;
-      }
-      presets[name] = value;
-    }
-    return presets;
-  } catch (error) {
-    console.error(`Failed to load presets from ${path}: ${error}`);
-    return {};
-  }
-}
-
-export function loadPresets(cwd: string, projectTrusted: boolean): {
-  presets: PresetsConfig;
-  sources: Record<string, string>;
-} {
-  const globalPath = join(getAgentDir(), PRESETS_CONFIG_FILE);
-  const projectPath = join(cwd, CONFIG_DIR_NAME, PRESETS_CONFIG_FILE);
-  const layers = [
-    { values: DEFAULT_PRESETS, source: "built-in" },
-    { values: loadPresetFile(globalPath), source: `global: ${globalPath}` },
-    { values: projectTrusted ? loadPresetFile(projectPath) : {}, source: `trusted project: ${projectPath}` },
-  ];
-  const presets: PresetsConfig = Object.create(null);
-  const sources: Record<string, string> = Object.create(null);
-  for (const { values, source } of layers) {
-    for (const [name, preset] of Object.entries(values)) {
-      presets[name] = preset;
-      sources[name] = source;
-    }
-  }
-  return { presets, sources };
-}
-
-export function readStoredPresetName(): string | null | undefined {
-  return readCodexDefaults().preset;
-}
-
-export function writeStoredPresetName(name: string): void {
-  writeCodexDefaults({ preset: name });
-}
-
-export function clearStoredPresetName(): void {
-  writeCodexDefaults({ preset: null });
+  // Preserve legacy preset defaults until the standalone extension supersedes them.
+  writeFileSync(path, `${JSON.stringify({ ...readDefaultsFile(), ...update }, null, 2)}\n`, "utf8");
 }
 
 export function readStoredServiceTier(): string | null | undefined {

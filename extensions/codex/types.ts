@@ -87,35 +87,6 @@ export type RateLimitSnapshot = {
   resetCredits?: ResetCredit[];
 };
 
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-
-export type Preset = {
-  provider?: string;
-  model?: string;
-  thinkingLevel?: ThinkingLevel;
-  tools?: string[];
-  instructions?: string;
-  description?: string;
-  serviceTier?: string | null;
-};
-
-export type PresetsConfig = Record<string, Preset>;
-
-export type OriginalState = {
-  model?: { provider: string; id: string };
-  thinkingLevel: ThinkingLevel;
-  tools: string[];
-  serviceTier?: string | null;
-};
-
-export type PresetSessionState = {
-  version: 2;
-  name: string | null;
-  original?: OriginalState;
-  tools: string[];
-  serviceTier: string | null;
-};
-
 export type PlanStep = { step: string; status: "pending" | "in_progress" | "completed" };
 export type PlanState = { mode: "off" | "planning" | "executing"; steps: PlanStep[] };
 
@@ -137,7 +108,6 @@ export type ServiceTier = {
 };
 
 export type CodexDefaults = {
-  preset?: string | null;
   serviceTier?: string | null;
   statusline?: StatuslineItem[];
   quotaWarnings?: boolean;
@@ -152,14 +122,10 @@ export type CodexState = {
   refreshPromise: Promise<boolean> | undefined;
   refreshAbortController: AbortController | undefined;
   statusStale: boolean;
-  presets: PresetsConfig;
-  presetSources: Record<string, string>;
   presetSelectionSource: string;
   plan: PlanState;
   quotaWarnings: boolean;
   activePresetName: string | undefined;
-  activePreset: Preset | undefined;
-  originalState: OriginalState | undefined;
   selectedServiceTier: string | undefined;
   statusline: StatuslineItem[];
   tokenUsage: TokenUsageProfile | undefined;
