@@ -1,5 +1,6 @@
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { PROVIDER } from "./types.ts";
+import { itemLabel } from "./render.ts";
 
 export function collectStats(entries: readonly SessionEntry[]) {
   const totals = {
@@ -37,18 +38,33 @@ export function collectStats(entries: readonly SessionEntry[]) {
   return totals;
 }
 
-export function statsText(entries: readonly SessionEntry[]): string {
+export function statsText(entries: readonly SessionEntry[], ctx: ExtensionContext): string {
+  const theme = ctx.ui.theme;
   const stats = collectStats(entries);
   const promptTokens = stats.input + stats.cacheRead + stats.cacheWrite;
   const cache = promptTokens ? `${((stats.cacheRead / promptTokens) * 100).toFixed(1)}%` : "n/a";
   return [
-    "OpenCode Go — current session branch (local assistant messages only)",
-    `Messages: ${stats.messages}`,
-    `Input: ${stats.input.toLocaleString("en-US")} · Output: ${stats.output.toLocaleString("en-US")}`,
-    `Cache read: ${stats.cacheRead.toLocaleString("en-US")} · Cache write: ${stats.cacheWrite.toLocaleString("en-US")} · Cached share of prompt tokens: ${cache}`,
-    `Recorded estimated cost: $${stats.cost.toFixed(4)} USD${stats.missingCost ? ` (${stats.missingCost} messages without cost data)` : ""}`,
-    ...(stats.missingUsage ? [`Token data incomplete for ${stats.missingUsage} messages.`] : []),
-    "Includes reported usage from failed/aborted messages and pre-compaction messages on this branch. Excludes other branches/sessions, unattributed tool/subagent usage, and summary-generation usage.",
-    "Catalog cost estimates are not a bill or Go quota consumption; model multipliers/pricing can differ. Use /opencode usage for subscription limits.",
+    theme.fg("mdLink", "OpenCode Go — current session branch"),
+    theme.fg("dim", "Local assistant messages only; no account request."),
+    itemLabel(ctx, "Messages", String(stats.messages)),
+    itemLabel(ctx, "Input", stats.input.toLocaleString("en-US")),
+    itemLabel(ctx, "Output", stats.output.toLocaleString("en-US")),
+    itemLabel(ctx, "Cache read", stats.cacheRead.toLocaleString("en-US")),
+    itemLabel(ctx, "Cache write", stats.cacheWrite.toLocaleString("en-US")),
+    itemLabel(ctx, "Cache share", promptTokens ? `${cache} of prompt tokens` : "n/a"),
+    itemLabel(
+      ctx,
+      "Estimated cost",
+      `$${stats.cost.toFixed(4)} USD${stats.missingCost ? ` (${stats.missingCost} messages without cost data)` : ""}`,
+    ),
+    ...(stats.missingUsage ? [theme.fg("warning", `Token data incomplete for ${stats.missingUsage} messages.`)] : []),
+    theme.fg(
+      "dim",
+      "Includes reported usage from failed/aborted messages and pre-compaction messages on this branch. Excludes other branches/sessions, unattributed tool/subagent usage, and summary-generation usage.",
+    ),
+    theme.fg(
+      "dim",
+      "Catalog cost estimates are not a bill or Go quota consumption; model multipliers/pricing can differ. Use /opencode usage for subscription limits.",
+    ),
   ].join("\n");
 }

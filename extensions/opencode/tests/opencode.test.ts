@@ -129,7 +129,7 @@ test("401/403 forget cached accounts; endpoint throttling and service failures r
     assert.equal(state.issue, issue);
     assert.equal(state.httpStatus, status);
     assert.equal(Boolean(state.snapshot), status !== 401 && status !== 403);
-    assert.ok(!usageText(state).includes("private server contents"));
+    assert.ok(!usageText(state, h.ctx).includes("private server contents"));
     if (status === 429) assert.ok(state.retryAt! > Date.now());
   }
 });
@@ -147,7 +147,7 @@ test("missing/auth-failed credentials never retain prior quota or expose excepti
   });
   await usage.refresh(h.ctx, true);
   assert.equal(state.issue, "auth");
-  assert.ok(!usageText(state).includes("fixture-secret"));
+  assert.ok(!usageText(state, h.ctx).includes("fixture-secret"));
 });
 
 test("rejects overridden Go endpoints before sending credentials", async () => {
@@ -188,7 +188,7 @@ test("credential rotation clears previous snapshot even when replacement account
   await usage.refresh(h.ctx, true);
   assert.equal(state.issue, "network");
   assert.equal(state.snapshot, undefined);
-  assert.ok(!usageText(state).includes("different-fixture"));
+  assert.ok(!usageText(state, h.ctx).includes("different-fixture"));
 });
 
 test("malformed and oversized responses preserve same-account cache as stale", async () => {
@@ -312,7 +312,7 @@ test("429 backoff is separate from quota status and manual refresh can retry", a
   };
   assert.equal(await usage.refresh(h.ctx), false);
   assert.equal(calls, 0);
-  assert.match(usageText(state), /does not prove Go quota exhaustion/);
+  assert.match(usageText(state, h.ctx), /does not prove Go quota exhaustion/);
   assert.equal(await usage.refresh(h.ctx, true), true);
   assert.equal(state.retryAt, undefined);
   const now = Date.now();
@@ -347,7 +347,7 @@ test("expired observations stay stale rather than synthesizing a refill", () => 
   statusline.render(h.ctx);
   assert.match(h.statuses.get("opencode")!, /0% left/);
   assert.match(h.statuses.get("opencode")!, /stale/);
-  assert.match(usageText(state), /reset due; refresh needed/);
+  assert.match(usageText(state, h.ctx), /reset due; refresh needed/);
   state.snapshot = parseUsage(payload(10), Date.now() - STALE_AFTER_MS - 1);
   assert.equal(isStale(state), true);
 });
@@ -413,9 +413,9 @@ test("informational commands work over RPC without launching a model or browser"
     return response(payload(60));
   };
   await h.command("usage");
-  assert.match(h.notices.at(-1)!.text, /40% remaining/);
+  assert.match(h.notices.at(-1)!.text, /40% left/);
   await h.command("status");
-  assert.match(h.notices.at(-1)!.text, /Provider selected: opencode-go/);
+  assert.match(h.notices.at(-1)!.text, /Provider: opencode-go/);
   assert.equal(calls, 2);
   await h.command("console");
   assert.match(h.notices.at(-1)!.text, /https:\/\/opencode.ai\/auth/);
@@ -424,6 +424,34 @@ test("informational commands work over RPC without launching a model or browser"
   await h.command("models");
   assert.match(h.notices.at(-1)!.text, /Model selection remains with Pi/);
   assert.equal(calls, 2);
+});
+
+test("usage output applies severity colors to windows, exhaustion, and issues", () => {
+  const { h, state } = fixture();
+  h.ctx.ui.theme.fg = (color, text) => `<${color}>${text}</${color}>`;
+
+  // Upstream rounding is preserved (no `Math.round`), matching the footer and README.
+  state.snapshot = parseUsage(payload(20.5));
+  assert.match(usageText(state, h.ctx), /<mdLink>5h:<\/mdLink> <success>79.5% left<\/success>/);
+
+  state.snapshot = parseUsage(payload(20));
+  assert.match(usageText(state, h.ctx), /<mdLink>5h:<\/mdLink> <success>80% left<\/success>/);
+
+  state.snapshot = parseUsage(payload(85));
+  assert.match(usageText(state, h.ctx), /<mdLink>5h:<\/mdLink> <warning>15% left<\/warning>/);
+
+  state.snapshot = parseUsage(payload(95));
+  assert.match(usageText(state, h.ctx), /<mdLink>5h:<\/mdLink> <error>5% left<\/error>/);
+
+  const limited = payload(20);
+  limited.usage.rolling.status = "rate-limited";
+  state.snapshot = parseUsage(limited);
+  assert.match(usageText(state, h.ctx), /<mdLink>5h:<\/mdLink> <error>80% left<\/error>/);
+  assert.match(usageText(state, h.ctx), /<mdLink>Exhausted:<\/mdLink> <error>5h<\/error>/);
+
+  state.snapshot = parseUsage(payload(20));
+  state.issue = "rate-limit";
+  assert.match(usageText(state, h.ctx), /<warning>The usage endpoint is rate-limiting requests/);
 });
 
 test("print/JSON modes make no automatic or command-triggered account requests and never write stdout", async (t) => {
@@ -636,18 +664,19 @@ test("stats count only attributed Go assistant messages on the supplied branch w
   await h.command("stats");
   assert.match(h.notices.at(-1)!.text, /Messages: 2/);
   assert.match(h.notices.at(-1)!.text, /37.5%/);
-  assert.match(statsText([]), /Messages: 0/);
+  assert.match(statsText([], h.ctx), /Messages: 0/);
   h.entries = [first];
   await h.command("stats");
   assert.match(h.notices.at(-1)!.text, /Messages: 1/);
 });
 
 test("statistics label incomplete legacy usage instead of propagating NaN or claiming complete data", () => {
+  const { h } = fixture();
   const entry = assistant("legacy");
   if (entry.type !== "message" || entry.message.role !== "assistant") assert.fail("Bad fixture");
   entry.message.usage.input = NaN;
   entry.message.usage.cost.total = NaN;
-  const text = statsText([entry]);
+  const text = statsText([entry], h.ctx);
   assert.match(text, /Token data incomplete for 1 messages/);
   assert.match(text, /1 messages without cost data/);
   assert.ok(!text.includes("NaN"));

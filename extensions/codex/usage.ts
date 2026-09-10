@@ -642,7 +642,10 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     const view = args.trim().toLowerCase();
     if (view.startsWith("warnings")) {
       if (view !== "warnings on" && view !== "warnings off") {
-        notify(ctx, `Quota warnings: ${state.quotaWarnings ? "on" : "off"}. Usage: /codex usage warnings on|off`);
+        notify(
+          ctx,
+          `${itemLabel(ctx, "Quota warnings", state.quotaWarnings ? "on" : "off")} ${ctx.ui.theme.fg("dim", "Usage: /codex usage warnings on|off")}`,
+        );
         return;
       }
       state.quotaWarnings = view === "warnings on";

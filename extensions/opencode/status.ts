@@ -4,7 +4,6 @@ import {
   isStale,
   notify,
   PROVIDER,
-  resetText,
   STATUSLINE_ITEMS,
   WINDOW_LABELS,
   WINDOW_NAMES,
@@ -15,6 +14,7 @@ import { limitingWindows, type createUsage } from "./usage.ts";
 import { parseStatusline } from "./statusline.ts";
 import { saveSettings } from "./storage.ts";
 import { statsText } from "./stats.ts";
+import { itemLabel, renderWindow } from "./render.ts";
 
 const ISSUES: Record<Issue, string> = {
   "missing-key": "No OpenCode API key configured. Use Pi's /login for OpenCode Go or configure OPENCODE_API_KEY.",
@@ -31,45 +31,59 @@ const ISSUES: Record<Issue, string> = {
     "Go uses a custom endpoint. Account reads are restricted to the official OpenCode Go service; no key was sent.",
 };
 
-export function usageText(state: State): string {
+export function usageText(state: State, ctx: ExtensionContext): string {
+  const theme = ctx.ui.theme;
   const snapshot = state.snapshot;
-  const lines = ["OpenCode Go subscription — server-reported, shared across clients and Go models"];
-  if (state.issue) lines.push(`${ISSUES[state.issue]}${state.httpStatus ? ` (HTTP ${state.httpStatus})` : ""}`);
-  if (state.retryAt) lines.push(`Automatic refresh deferred until ${new Date(state.retryAt).toISOString()}.`);
-  if (!snapshot) lines.push("Quota unknown; no successful observation available.");
-  else {
+  const stale = isStale(state);
+  const lines = [
+    theme.fg("mdLink", "OpenCode Go subscription"),
+    theme.fg("dim", "Server-reported; shared across clients and Go models."),
+  ];
+  if (state.issue)
+    lines.push(theme.fg("warning", `${ISSUES[state.issue]}${state.httpStatus ? ` (HTTP ${state.httpStatus})` : ""}`));
+  if (state.retryAt)
+    lines.push(theme.fg("dim", `Automatic refresh deferred until ${new Date(state.retryAt).toISOString()}.`));
+  if (!snapshot) {
+    lines.push(theme.fg("warning", "Quota unknown; no successful observation available."));
+  } else {
     lines.push(
-      `Last successful refresh: ${new Date(snapshot.observedAt).toISOString()}${isStale(state) ? " — STALE; refresh required" : ""}`,
+      `${itemLabel(ctx, "Last refresh", new Date(snapshot.observedAt).toISOString())}${stale ? ` ${theme.fg("warning", "STALE — refresh required")}` : ""}`,
     );
-    for (const name of WINDOW_NAMES) {
-      const window = snapshot.windows[name];
-      lines.push(
-        `${WINDOW_LABELS[name]}: ${100 - window.usedPercent}% remaining (${window.usedPercent}% used; ${window.status}) · ${resetText(window.resetsAt)} · ${new Date(window.resetsAt).toISOString()}`,
-      );
-    }
+    for (const name of WINDOW_NAMES) lines.push(renderWindow(ctx, name, snapshot.windows[name]));
     const limiting = limitingWindows(snapshot)
       .map(([name]) => WINDOW_LABELS[name])
       .join(", ");
     const exhausted = WINDOW_NAMES.some((name) => snapshot.windows[name].status === "rate-limited");
     lines.push(
-      `${exhausted ? "Exhausted" : "Most constrained"} window(s)${isStale(state) ? " at last observation" : ""}: ${limiting}.`,
+      exhausted
+        ? `${theme.fg("mdLink", "Exhausted:")} ${theme.fg("error", `${limiting}${stale ? " (at last observation)" : ""}`)}`
+        : itemLabel(ctx, "Most constrained", `${limiting}${stale ? " (at last observation)" : ""}`),
     );
   }
   lines.push(
-    "Percentages have upstream rounding. Dollar/token/request balances and billing renewal dates are not available.",
+    theme.fg(
+      "dim",
+      "Percentages have upstream rounding. Dollar/token/request balances and billing renewal dates are not available.",
+    ),
   );
   lines.push(
-    "If console ‘Use balance’ is enabled, requests can spend Zen credits after Go limits are exhausted. Warnings are not a spending cap; the API does not expose that setting or wallet balance.",
+    theme.fg(
+      "dim",
+      "If console ‘Use balance’ is enabled, requests can spend Zen credits after Go limits are exhausted. Warnings are not a spending cap; the API does not expose that setting or wallet balance.",
+    ),
   );
   return lines.join("\n");
 }
 
 export function statusText(state: State, ctx: ExtensionContext): string {
+  const theme = ctx.ui.theme;
+  const provider = ctx.model?.provider;
   return [
-    `Provider selected: ${ctx.model?.provider ?? "none"}${ctx.model?.provider === PROVIDER ? " (Go footer enabled when configured)" : " (Go footer hidden)"}`,
-    `Quota warnings: ${state.settings.warnings ? "on" : "off"} · Footer: ${state.settings.statusline.join(", ") || "off"}`,
-    "Uses Pi's Go authentication and transport; no separate OpenCode CLI required.",
-    usageText(state),
+    `${itemLabel(ctx, "Provider", provider ?? "none")} ${theme.fg("dim", provider === PROVIDER ? "(Go footer enabled when configured)" : "(Go footer hidden)")}`,
+    itemLabel(ctx, "Quota warnings", state.settings.warnings ? "on" : "off"),
+    itemLabel(ctx, "Footer", state.settings.statusline.join(", ") || "off"),
+    theme.fg("dim", "Uses Pi's Go authentication and transport; no separate OpenCode CLI required."),
+    usageText(state, ctx),
   ].join("\n");
 }
 
@@ -119,26 +133,38 @@ export function registerCommand(
       const [command = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
       if ((command === "usage" || command === "status") && !rest.length) {
         const current = usage.generation();
-        notify(ctx, state.snapshot ? `${usageText(state)}\nRefreshing…` : "Refreshing OpenCode Go subscription…");
+        notify(
+          ctx,
+          state.snapshot
+            ? `${usageText(state, ctx)}\n${ctx.ui.theme.fg("dim", "Refreshing…")}`
+            : ctx.ui.theme.fg("dim", "Refreshing OpenCode Go subscription…"),
+        );
         await usage.refresh(ctx, true);
         if (current !== usage.generation()) return;
-        notify(ctx, command === "status" ? statusText(state, ctx) : usageText(state), state.issue ? "warning" : "info");
+        notify(
+          ctx,
+          command === "status" ? statusText(state, ctx) : usageText(state, ctx),
+          state.issue ? "warning" : "info",
+        );
         return;
       }
       if (command === "stats" && !rest.length) {
-        notify(ctx, statsText(ctx.sessionManager.getBranch()));
+        notify(ctx, statsText(ctx.sessionManager.getBranch(), ctx));
         return;
       }
       if (command === "console" && !rest.length) {
         notify(
           ctx,
-          `OpenCode account console: ${CONSOLE_URL}\nSign in and choose your workspace for Go limits, detailed usage, billing, and ‘Use balance’ settings. No browser was opened and no billing settings changed.`,
+          `${itemLabel(ctx, "OpenCode console", CONSOLE_URL)}\n${ctx.ui.theme.fg("dim", "Sign in and choose your workspace for Go limits, detailed usage, billing, and ‘Use balance’ settings. No browser was opened and no billing settings changed.")}`,
         );
         return;
       }
       if (command === "warnings") {
         if (!rest.length) {
-          notify(ctx, `Quota warnings: ${state.settings.warnings ? "on" : "off"}. Use /opencode warnings on|off.`);
+          notify(
+            ctx,
+            `${itemLabel(ctx, "Quota warnings", state.settings.warnings ? "on" : "off")} ${ctx.ui.theme.fg("dim", "Use /opencode warnings on|off.")}`,
+          );
           return;
         }
         if (rest.length !== 1 || !["on", "off"].includes(rest[0])) {
@@ -163,7 +189,7 @@ export function registerCommand(
         if (!rest.length) {
           notify(
             ctx,
-            `Go footer: ${state.settings.statusline.join(", ") || "off"}. Available: ${STATUSLINE_ITEMS.join(", ")}.\nUse /opencode statusline set|add|remove FIELDS or reset. Percentages are remaining. An empty set hides the footer.`,
+            `${itemLabel(ctx, "Go footer", state.settings.statusline.join(", ") || "off")}\n${ctx.ui.theme.fg("dim", `Available: ${STATUSLINE_ITEMS.join(", ")}. Use /opencode statusline set|add|remove FIELDS or reset. Percentages are remaining. An empty set hides the footer.`)}`,
           );
           return;
         }

@@ -84,7 +84,7 @@ export function createStatusline(state: CodexState, deps: StatuslineDeps) {
     if (!operation) {
       notify(
         ctx,
-        `Statusline: ${state.statusline.join(", ") || "empty"}\nUsage: /codex statusline set|add|remove items | reset. Percentages are quota remaining.`,
+        `${itemLabel(ctx, "Statusline", state.statusline.join(", ") || "empty")}\n${ctx.ui.theme.fg("dim", "Usage: /codex statusline set|add|remove items | reset. Percentages are quota remaining.")}`,
       );
       return;
     }
@@ -110,7 +110,7 @@ export function createStatusline(state: CodexState, deps: StatuslineDeps) {
     }
     writeStoredStatusline(state.statusline);
     renderStatus(ctx);
-    notify(ctx, `Statusline: ${state.statusline.join(", ") || "empty"}`);
+    notify(ctx, itemLabel(ctx, "Statusline", state.statusline.join(", ") || "empty"));
   }
 
   function statuslineCompletions(prefix: string): AutocompleteItem[] | null {

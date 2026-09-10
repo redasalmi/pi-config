@@ -3,7 +3,7 @@ import type { CodexSubcommand } from "./commands.ts";
 import type { CodexState } from "./types.ts";
 import { writeStoredServiceTier } from "./storage.ts";
 import { describeServiceTiers, findServiceTier, refreshServiceTierCatalog } from "./service-tiers.ts";
-import { notify } from "./utils.ts";
+import { itemLabel, notify } from "./utils.ts";
 
 type ServiceTierDeps = {
   renderStatus: (ctx: ExtensionContext) => boolean;
@@ -24,7 +24,11 @@ export function createServiceTier(state: CodexState, deps: ServiceTierDeps): Cod
       if (!name) {
         notify(
           ctx,
-          `Current tier: ${state.selectedServiceTier ?? "standard"}\nAvailable: ${describeServiceTiers(ctx)}\nUsage: /codex tier NAME|off | /codex tier save NAME|off`,
+          [
+            itemLabel(ctx, "Current tier", state.selectedServiceTier ?? "standard"),
+            ctx.ui.theme.fg("dim", `Available: ${describeServiceTiers(ctx)}`),
+            ctx.ui.theme.fg("dim", "Usage: /codex tier NAME|off | /codex tier save NAME|off"),
+          ].join("\n"),
         );
         return;
       }
@@ -36,13 +40,16 @@ export function createServiceTier(state: CodexState, deps: ServiceTierDeps): Cod
       }
       if (save) {
         writeStoredServiceTier(tier?.id ?? null);
-        notify(ctx, `Startup service tier: ${tier?.name ?? "standard"}. Current session unchanged.`);
+        notify(
+          ctx,
+          `${itemLabel(ctx, "Startup tier", tier?.name ?? "standard")} ${ctx.ui.theme.fg("dim", "Current session unchanged.")}`,
+        );
         return;
       }
       state.selectedServiceTier = tier?.id;
       deps.persistSession(ctx);
       deps.renderStatus(ctx);
-      notify(ctx, `Session service tier: ${tier ? `${tier.name} (${tier.id})` : "standard"}`);
+      notify(ctx, itemLabel(ctx, "Session tier", tier ? `${tier.name} (${tier.id})` : "standard"));
     },
   };
 }
