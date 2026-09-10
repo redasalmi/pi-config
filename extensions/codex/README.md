@@ -1,9 +1,8 @@
 # Codex workflow extension
 
 A small Pi workflow layer inspired by Codex CLI: service tiers, account limits,
-planning/checklists, and local diff/review commands. It reuses Pi's
-models, authentication, sessions, and provider transport. No Codex CLI installation
-or additional dependency is required.
+and quota reporting. It reuses Pi's models, authentication, sessions, and provider
+transport. No Codex CLI installation or additional dependency is required.
 
 ## Commands
 
@@ -20,16 +19,6 @@ behavior and any parameters follow it.
 | `/codex usage warnings on\|off`                  | Enable/disable quota warnings globally.                                              |
 | `/codex statusline set\|add\|remove ITEMS`       | Configure ordered, comma-separated footer fields.                                    |
 | `/codex statusline reset`                        | Use the compact preset/tier/quota/credits footer.                                    |
-| `/codex plan on` / `/codex plan PROMPT`          | Enter planning mode, optionally starting a planning request.                         |
-| `/codex plan status`                             | Show the full checklist and planning state.                                          |
-| `/codex plan execute`                            | Confirm the proposed checklist and start implementation.                             |
-| `/codex plan off`                                | Leave planning without starting a task; retain the checklist.                        |
-| `/codex plan track`                              | Enable checklist tracking for ordinary work without starting a task.                 |
-| `/codex plan clear`                              | Disable planning/tracking and clear the checklist.                                   |
-| `/codex diff [all\|staged\|unstaged\|untracked]` | Inspect local changes without an LLM request.                                        |
-| `/codex review base=REF [head=REF]`              | Pin local commits and invoke the existing `code-review` skill.                       |
-| `/codex review working`                          | Start a separately scoped, read-only working-tree review.                            |
-| `/codex review`                                  | Choose a review scope interactively.                                                 |
 | `/codex tier NAME` / `/codex tier off`           | Set/clear the session's model-advertised service tier.                               |
 | `/codex tier save NAME` / `/codex tier save off` | Save/clear the startup tier without changing this session.                           |
 | `/codex tier`                                    | Refresh tier metadata and list the active model's supported tiers.                   |
@@ -58,45 +47,6 @@ readable; the newest applicable tier record on the active branch wins.
 Preset selection defaults live in `presets-state.json` and are owned by the
 Presets extension. Codex ignores any `preset` field in `codex.json`; no
 automatic configuration rewrite or session migration is needed.
-
-## Planning and review boundaries
-
-Planning blocks agent calls to every tool except `read`, `grep`, `find`, `ls`,
-`web_search`, `web_fetch`, and its own `update_plan` tool.
-Shell, browser automation, and unknown/dynamically added tools are blocked even
-if a preset enables them. Planning adds its own checklist tool when necessary;
-it does not replace the rest of your active tool set.
-
-**This is a tool-call guard, not an OS sandbox or a general permissions system.**
-Manual `!` commands, extension commands, other extensions' direct side effects,
-and the implementations of allowlisted tools are outside that boundary. Existing
-repository instructions and separate approvals still apply. Planning does not
-provide secret-file access controls.
-
-The model can propose a structured checklist using `update_plan`: at most 20
-single-line steps, with `pending`, `in_progress`, or `completed` status and at most
-one in-progress step. In planning mode, all steps must remain pending. Checklists
-are optional; no prose parsing, automatic task execution, or automatic model
-switching occurs. The widget shows up to five unfinished steps; `/codex plan status`
-shows all steps. State follows the active session branch and survives compaction,
-reload, resume, and fork.
-
-`/codex diff` shows tracked staged/unstaged content plus untracked names. Use
-`/codex diff untracked` to explicitly choose an untracked file for preview; symlinks,
-non-regular files, and files over 50 KiB are not opened by that preview. Ignored
-files are excluded. Diff output is bounded to 50 KiB per section and marked when
-truncated. External diff/textconv helpers and Git lazy fetching are disabled.
-Diffs are displayed locally, not injected into model context. The working tree
-can change while Git is reading it; this is a local viewer, not an atomic snapshot.
-
-Committed reviews require your enabled `code-review` skill and Pi skill commands.
-Refs are resolved once to commit IDs and checked for a merge base. If no base is
-provided, the launcher uses local `origin/HEAD` or asks for one; it never assumes
-`main` or fetches. Working-tree reviews use a separate prompt because the committed
-review skill excludes that scope. Reviews start an LLM task, but do not themselves
-edit files, commit, or fetch. Leave planning with `/codex plan off` first so the reviewer
-can use Bash for read-only Git commands; the review request instructs it not to
-mutate files or external services.
 
 ## Usage and performance
 
@@ -140,7 +90,7 @@ npm run test:codex
 npm run typecheck
 ```
 
-Tests use Node's built-in test runner, mocked provider/UI boundaries, isolated
-agent directories, and a disposable local Git clone. They do not access real
+Tests use Node's built-in test runner, mocked provider/UI boundaries, and isolated
+agent directories. They do not access real
 credentials, contact account endpoints, create commits, or mutate the source
 working tree. Live account and terminal behavior still require manual verification.

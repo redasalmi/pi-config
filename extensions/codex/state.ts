@@ -17,7 +17,6 @@ export function createCodexState(): CodexState {
     statusline: [...DEFAULT_STATUSLINE],
     tokenUsage: undefined,
     gitBranch: undefined,
-    plan: { mode: "off", steps: [] },
     quotaWarnings: true,
   };
 }

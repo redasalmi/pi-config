@@ -87,8 +87,8 @@ Use `/preset status` for configuration sources. Run `npm run test:presets`.
 
 ## Codex workflow
 
-The [Codex extension](extensions/codex/README.md) adds service tiers, quota
-reporting, planning/checklists, and local diff/review commands.
+The [Codex extension](extensions/codex/README.md) adds service tiers and quota
+reporting.
 Use `/codex status` for current state; preset selection belongs to Presets.
 Run its isolated regression tests with `npm run test:codex`.
 

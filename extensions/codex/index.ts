@@ -7,8 +7,6 @@ import { createServiceTier } from "./fast.ts";
 import { registerLifecycle } from "./lifecycle.ts";
 import { createStatusCommand } from "./status.ts";
 import { createQuotaWarnings } from "./quota.ts";
-import { createPlanning } from "./plan.ts";
-import { createGitCommands } from "./git.ts";
 import { registerCodexCommand } from "./commands.ts";
 import { PROVIDER } from "./constants.ts";
 
@@ -32,8 +30,6 @@ export default function (pi: ExtensionAPI) {
         if (state.statusline.includes("git")) await usage.loadGitBranch(ctx);
       },
     },
-    plan: createPlanning(pi, state),
-    ...createGitCommands(pi, state),
     tier,
   });
 

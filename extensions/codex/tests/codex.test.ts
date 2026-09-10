@@ -9,10 +9,9 @@ import { createUsage, mergeSnapshot, redemptionOutcome, snapshotsFromHeaders, sn
 import { registerLifecycle } from "../lifecycle.ts";
 import { createStatusCommand } from "../status.ts";
 import { registerCodexCommand } from "../commands.ts";
-import { createPlanning, validateSteps } from "../plan.ts";
 import { createQuotaWarnings } from "../quota.ts";
 import { findServiceTier, parseServiceTiers, refreshServiceTierCatalog } from "../service-tiers.ts";
-import { PLAN_ENTRY_TYPE, STALE_AFTER_MS } from "../constants.ts";
+import { STALE_AFTER_MS } from "../constants.ts";
 import codex from "../index.ts";
 import { harness, model } from "./helpers.ts";
 
@@ -111,7 +110,7 @@ test("codex registers one top-level command and scopes completions per subcomman
   if (!completions) throw new Error("Missing codex completions");
   assert.deepEqual(
     (completions("") ?? []).map((item) => item.value),
-    ["status ", "usage ", "statusline ", "plan ", "diff ", "review ", "tier "],
+    ["status ", "usage ", "statusline ", "tier "],
   );
   assert.deepEqual(
     (completions("usage w") ?? []).map((item) => item.value),
@@ -523,101 +522,4 @@ test("account status preserves severity colors and dims stale annotations", () =
       "<mdLink>Full account data:</mdLink> <success>unavailable</success><dim> (refresh failed; cached)</dim>",
     ),
   );
-});
-
-// Planning is explicit, branch-local, and fail-closed for unknown agent tools.
-test("plan guard blocks shell/browser/dynamically added tools but permits reading", async () => {
-  const h = harness();
-  registerCodexCommand(h.pi, { plan: createPlanning(h.pi, h.state) });
-  h.pi.setActiveTools(["read"]);
-  await h.command("codex", "plan on");
-  assert.deepEqual(h.pi.getActiveTools(), ["read", "update_plan"]);
-  for (const toolName of ["bash", "browser", "new_external_writer", "edit"]) {
-    assert.deepEqual((await h.emit("tool_call", { toolName }))[0], {
-      block: true,
-      reason: `Planning mode blocks ${toolName}. Use read/search tools. Only the user can exit planning with /codex plan off or approve execution with /codex plan execute.`,
-    });
-  }
-  assert.equal((await h.emit("tool_call", { toolName: "read" }))[0], undefined);
-  await h.command("codex", "plan off");
-  assert.equal((await h.emit("tool_call", { toolName: "bash" }))[0], undefined);
-  assert.equal(h.messages.length, 0);
-});
-
-test("checklist validation is strict and planning cannot mark work completed", async () => {
-  assert.throws(() =>
-    validateSteps([
-      { step: "one", status: "in_progress" },
-      { step: "two", status: "in_progress" },
-    ]),
-  );
-  assert.throws(() => validateSteps([{ step: "bad\nline", status: "pending" }]));
-  const h = harness();
-  registerCodexCommand(h.pi, { plan: createPlanning(h.pi, h.state) });
-  await h.command("codex", "plan on");
-  await assert.rejects(
-    h.tools
-      .get("update_plan")!
-      .execute("id", { plan: [{ step: "work", status: "completed" }] }, undefined, undefined, h.ctx),
-    /pending/,
-  );
-});
-
-test("only explicit confirmed plan execution starts work", async () => {
-  const h = harness();
-  registerCodexCommand(h.pi, { plan: createPlanning(h.pi, h.state) });
-  await h.command("codex", "plan on");
-  await h.tools
-    .get("update_plan")!
-    .execute("id", { plan: [{ step: "Run checks", status: "pending" }] }, undefined, undefined, h.ctx);
-  assert.equal(h.messages.length, 0);
-  h.ctx.ui.confirm = async () => false;
-  await h.command("codex", "plan execute");
-  assert.equal(h.state.plan.mode, "planning");
-  assert.equal(h.messages.length, 0);
-  h.ctx.ui.confirm = async () => true;
-  await h.command("codex", "plan execute");
-  assert.equal(h.state.plan.mode, "executing");
-  assert.equal(h.messages.length, 1);
-});
-
-test("non-object plan records fail closed on startup and tree navigation", async () => {
-  for (const event of ["session_start", "session_tree"]) {
-    for (const data of [null, undefined, [], "planning", 0]) {
-      const h = harness();
-      registerCodexCommand(h.pi, { plan: createPlanning(h.pi, h.state) });
-      await h.command("codex", "plan on");
-      h.pi.appendEntry(PLAN_ENTRY_TYPE, data);
-      await h.emit(event);
-      assert.equal(h.state.plan.mode, "planning");
-      assert.deepEqual(h.state.plan.steps, []);
-      assert.match(h.notices.at(-1)!, /Saved plan is invalid/);
-      for (const toolName of ["write", "bash", "browser"]) {
-        const result = (await h.emit("tool_call", { toolName }))[0];
-        assert.ok(result && typeof result === "object" && "block" in result);
-        assert.equal(result.block, true);
-      }
-      await h.command("codex", "plan clear");
-      await h.emit(event);
-      assert.equal(h.state.plan.mode, "off");
-      assert.equal((await h.emit("tool_call", { toolName: "write" }))[0], undefined);
-    }
-  }
-});
-
-test("plan state follows tree navigation and malformed state keeps the guard enabled", async () => {
-  const h = harness();
-  registerCodexCommand(h.pi, { plan: createPlanning(h.pi, h.state) });
-  await h.command("codex", "plan on");
-  const planning = [...h.entries];
-  await h.command("codex", "plan off");
-  h.entries = planning;
-  await h.emit("session_tree");
-  assert.equal(h.state.plan.mode, "planning");
-  h.entries = [];
-  await h.emit("session_tree");
-  assert.equal(h.state.plan.mode, "off");
-  h.pi.appendEntry(PLAN_ENTRY_TYPE, { mode: "broken", steps: [] });
-  await h.emit("session_tree");
-  assert.equal(h.state.plan.mode, "planning");
 });

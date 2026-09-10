@@ -87,9 +87,6 @@ export type RateLimitSnapshot = {
   resetCredits?: ResetCredit[];
 };
 
-export type PlanStep = { step: string; status: "pending" | "in_progress" | "completed" };
-export type PlanState = { mode: "off" | "planning" | "executing"; steps: PlanStep[] };
-
 export type StatuslineItem =
   | "preset"
   | "model"
@@ -123,7 +120,6 @@ export type CodexState = {
   refreshAbortController: AbortController | undefined;
   statusStale: boolean;
   presetSelectionSource: string;
-  plan: PlanState;
   quotaWarnings: boolean;
   activePresetName: string | undefined;
   selectedServiceTier: string | undefined;

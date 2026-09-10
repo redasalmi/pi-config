@@ -21,7 +21,6 @@ export function createStatusCommand(
       itemLabel(ctx, "Context", context?.percent == null ? "unknown" : `${Math.round(context.percent)}%`),
       itemLabel(ctx, "Git", state.gitBranch ?? "unknown / not a repository"),
       itemLabel(ctx, "Tools", pi.getActiveTools().join(", ") || "none"),
-      itemLabel(ctx, "Plan", state.plan.mode),
       usage.limitsText(ctx),
       ctx.ui.theme.fg(
         "dim",

@@ -15,7 +15,7 @@ export function registerCodexCommand(pi: ExtensionAPI, commands: Record<string, 
   pi.registerCommand("codex", {
     // Pi 0.85 does not support argumentHint for extension commands, so list the
     // subcommands in the description to keep them discoverable from the palette.
-    description: "Codex: status | usage | tier | statusline | plan | diff | review",
+    description: "Codex: status | usage | tier | statusline",
     getArgumentCompletions: (prefix) => {
       // Normalize the same way the handler does, so stray whitespace cannot
       // suppress suggestions. Trailing space is preserved for forms like "set ".

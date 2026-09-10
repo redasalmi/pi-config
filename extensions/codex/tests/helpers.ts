@@ -44,7 +44,7 @@ export function harness() {
   const statuses = new Map<string, string | undefined>();
   const widgets = new Map<string, unknown>();
   let entries: SessionEntry[] = [];
-  let activeTools = ["read", "bash", "edit", "write", "browser", "update_plan"];
+  let activeTools = ["read", "bash", "edit", "write", "browser"];
   let activeModel = model();
   let thinking: ReturnType<ExtensionAPI["getThinkingLevel"]> = "medium";
   let configuredAuth = true;
@@ -79,7 +79,7 @@ export function harness() {
     setActiveTools(names: string[]) {
       activeTools = [...names];
     },
-    getAllTools: () => ["read", "bash", "edit", "write", "browser", "update_plan"].map((name) => ({ name })),
+    getAllTools: () => ["read", "bash", "edit", "write", "browser"].map((name) => ({ name })),
     async setModel(value: typeof activeModel) {
       if (!configuredAuth) return false;
       activeModel = value;
@@ -95,7 +95,6 @@ export function harness() {
         timestamp: new Date().toISOString(),
       });
     },
-    getCommands: () => [{ name: "skill:code-review", source: "skill" }],
     sendUserMessage(text: string, options?: unknown) {
       messages.push({ text, options });
     },
