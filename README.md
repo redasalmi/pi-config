@@ -7,7 +7,9 @@ My personal extensions, skills, and themes for [Pi](https://pi.dev).
 - `extensions/` — custom tools and integrations.
 - `skills/` — reusable workflows and reference material.
 - `themes/` — terminal UI themes.
-- `AGENTS.md` — shared instructions and working conventions.
+- `agent/WORKING_AGREEMENT.md` — shared instructions and working conventions,
+  installed globally through a symlink (see
+  [Optional: shared agent instructions](#optional-shared-agent-instructions)).
 
 ## Installation
 
@@ -132,12 +134,18 @@ invalid settings also fall back to `true` with a UI warning.
 
 ## Optional: shared agent instructions
 
-`AGENTS.md` is not installed as a package resource. To use it globally, first
-back up any existing `~/.pi/agent/AGENTS.md`, then create a symlink:
+`agent/WORKING_AGREEMENT.md` is not installed as a package resource. To use it
+globally, first back up any existing `~/.pi/agent/AGENTS.md`, then create a
+symlink:
 
 ```bash
-ln -s ~/Dev/pi-config/AGENTS.md ~/.pi/agent/AGENTS.md
+ln -s ~/Dev/pi-config/agent/WORKING_AGREEMENT.md ~/.pi/agent/AGENTS.md
 ```
+
+The file keeps a non-magic name on purpose. Pi loads any `AGENTS.md` or
+`CLAUDE.md` found in the working directory and its parents, and deduplicates
+context files by path, so a symlinked `AGENTS.md` in this checkout would be
+injected twice while working here.
 
 ### Uninstall
 
@@ -146,4 +154,5 @@ pi remove ~/Dev/pi-config
 ```
 
 This unregisters the package without deleting the checkout. If you created the
-optional `AGENTS.md` symlink, remove it separately and restore your backup.
+optional `~/.pi/agent/AGENTS.md` symlink, remove it separately and restore your
+backup.
