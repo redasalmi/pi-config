@@ -69,7 +69,8 @@ npm run check:smoke
 ```
 
 Run an individual suite with `npm run test:browser`, `test:codex`,
-`test:presets`, `test:opencode`, `test:web-access`, or `test:notify`.
+`test:presets`, `test:opencode`, `test:review`, `test:web-access`, or
+`test:notify`.
 
 The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
 `chrome-devtools` (`chrome-devtools-mcp`), and `lighthouse` (`lighthouse`) on
@@ -84,6 +85,14 @@ remembers it as the startup default for new sessions. It works
 independently of Codex; enabling both preserves service-tier and statusline
 integration. Existing definitions and session records remain compatible.
 Use `/preset status` for configuration sources. Run `npm run test:presets`.
+
+## Code review
+
+The [Code review extension](extensions/review/README.md) adds `/review`, a scope
+picker over the [code-review skill](skills/code-review/SKILL.md). Choose a base
+branch, uncommitted changes, a single commit, or custom instructions; the skill's
+procedure is injected into the current thread with the active model. Reviews are
+read-only and refuse to start while the agent is busy. Run `npm run test:review`.
 
 ## Codex workflow
 

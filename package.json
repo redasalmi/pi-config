@@ -20,7 +20,7 @@
   "scripts": {
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "check:smoke": "npm run check && npm run test:browser:smoke",
-    "test": "npm run test:browser && npm run test:codex && npm run test:presets && npm run test:opencode && npm run test:web-access && npm run test:notify",
+    "test": "npm run test:browser && npm run test:codex && npm run test:presets && npm run test:opencode && npm run test:review && npm run test:web-access && npm run test:notify",
     "lint": "oxlint --deny-warnings",
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
@@ -30,6 +30,7 @@
     "test:codex": "node --test extensions/codex/tests/*.test.ts",
     "test:presets": "node --test extensions/presets/tests/*.test.ts",
     "test:opencode": "node --test extensions/opencode/tests/*.test.ts",
+    "test:review": "node --test extensions/review/tests/*.test.ts",
     "test:web-access": "node --test extensions/web-access/tests/*.test.ts",
     "test:notify": "node --test extensions/notify/tests/*.test.ts"
   },
