@@ -6,14 +6,14 @@ Read this reference only when the user requests adaptation to a named model, pro
 
 Record these independently:
 
-| Dimension | Examples | Why it matters |
-|---|---|---|
-| Provider | OpenAI, Anthropic, Google | Documentation and API vocabulary |
-| Exact model | A dated snapshot or exact model ID | Prompt behavior and feature support can change |
-| Surface/harness | Pi, Codex, ChatGPT, Claude Code, API application | Available tools, surrounding instructions, persistence, and approvals |
-| Placement | system, developer, user, skill, reusable template | Instruction authority and separation from dynamic input |
-| Runtime configuration | tools, schemas, reasoning/verbosity, sandbox, permissions | Often cannot be controlled reliably through prose |
-| Output consumer | human or software | Natural language versus structured contract |
+| Dimension             | Examples                                                  | Why it matters                                                        |
+| --------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
+| Provider              | OpenAI, Anthropic, Google                                 | Documentation and API vocabulary                                      |
+| Exact model           | A dated snapshot or exact model ID                        | Prompt behavior and feature support can change                        |
+| Surface/harness       | Pi, Codex, ChatGPT, Claude Code, API application          | Available tools, surrounding instructions, persistence, and approvals |
+| Placement             | system, developer, user, skill, reusable template         | Instruction authority and separation from dynamic input               |
+| Runtime configuration | tools, schemas, reasoning/verbosity, sandbox, permissions | Often cannot be controlled reliably through prose                     |
+| Output consumer       | human or software                                         | Natural language versus structured contract                           |
 
 Do not infer one dimension from another. When a detail is unknown, use portable capability-based language.
 

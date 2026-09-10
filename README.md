@@ -44,22 +44,32 @@ Pi supplies the packages listed in `peerDependencies` at runtime. Pinned
 `devDependencies` provide their types locally, without depending on a global
 Pi installation or machine-specific paths. No compilation step is needed.
 
-Run type-checking and all test scripts, stopping on the first failure:
+Lint and format the repository with the [oxc toolchain](https://oxc.rs)
+(`oxlint` and `oxfmt`):
+
+```bash
+npm run lint          # oxlint
+npm run format        # oxfmt --write
+npm run format:check  # verify formatting without writing
+```
+
+Run type-checking, linting, formatting verification, and every isolated test
+suite, stopping on the first failure:
 
 ```bash
 npm run check
 ```
 
-This includes the Browser smoke tests, which require `playwright-cli`,
-`chrome-devtools`, and Chrome to be installed.
-
-Run the isolated Web Access and Notify tests (no network requests or native
-notifications):
+`npm run check` needs no network access or native notifications. The Browser
+smoke tests are opt-in because they require `playwright-cli`, `chrome-devtools`,
+and Chrome to be installed:
 
 ```bash
-npm run test:web-access
-npm run test:notify
+npm run check:smoke
 ```
+
+Run an individual suite with `npm run test:browser`, `test:codex`,
+`test:presets`, `test:opencode`, `test:web-access`, or `test:notify`.
 
 The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
 `chrome-devtools` (`chrome-devtools-mcp`), and `lighthouse` (`lighthouse`) on

@@ -10,20 +10,29 @@ type PresetDeps = { renderStatus: (ctx: ExtensionContext) => boolean };
 type ApplyOptions = { persist: boolean; notify: boolean; source?: string; storeDefault?: boolean };
 
 export function describePreset(preset: Preset): string {
-  return [
-    preset.description,
-    preset.provider && preset.model ? `${preset.provider}/${preset.model}` : undefined,
-    preset.thinkingLevel ? `thinking:${preset.thinkingLevel}` : undefined,
-    preset.tools !== undefined ? `tools:${preset.tools.join(",") || "none"}` : undefined,
-    preset.serviceTier !== undefined ? `tier:${preset.serviceTier ?? "standard"}` : undefined,
-    preset.instructions ? "custom instructions" : undefined,
-  ].filter(Boolean).join(" | ") || "Keep current configuration";
+  return (
+    [
+      preset.description,
+      preset.provider && preset.model ? `${preset.provider}/${preset.model}` : undefined,
+      preset.thinkingLevel ? `thinking:${preset.thinkingLevel}` : undefined,
+      preset.tools !== undefined ? `tools:${preset.tools.join(",") || "none"}` : undefined,
+      preset.serviceTier !== undefined ? `tier:${preset.serviceTier ?? "standard"}` : undefined,
+      preset.instructions ? "custom instructions" : undefined,
+    ]
+      .filter(Boolean)
+      .join(" | ") || "Keep current configuration"
+  );
 }
 
 export function readOriginalState(value: unknown): OriginalState | undefined {
   if (!isRecord(value) || !isThinkingLevel(value.thinkingLevel) || !isToolList(value.tools)) return undefined;
-  if (value.model !== undefined && (!isRecord(value.model) || typeof value.model.provider !== "string" || typeof value.model.id !== "string")) return undefined;
-  if (value.serviceTier !== undefined && value.serviceTier !== null && typeof value.serviceTier !== "string") return undefined;
+  if (
+    value.model !== undefined &&
+    (!isRecord(value.model) || typeof value.model.provider !== "string" || typeof value.model.id !== "string")
+  )
+    return undefined;
+  if (value.serviceTier !== undefined && value.serviceTier !== null && typeof value.serviceTier !== "string")
+    return undefined;
   return {
     model: value.model as OriginalState["model"],
     thinkingLevel: value.thinkingLevel,
@@ -37,7 +46,10 @@ function isToolList(value: unknown): value is string[] {
 }
 
 export function savedPreset(ctx: ExtensionContext): Record<string, unknown> | undefined {
-  const entry = ctx.sessionManager.getBranch().reverse().find((entry) => entry.type === "custom" && entry.customType === PRESET_ENTRY_TYPE);
+  const entry = ctx.sessionManager
+    .getBranch()
+    .reverse()
+    .find((entry) => entry.type === "custom" && entry.customType === PRESET_ENTRY_TYPE);
   return entry?.type === "custom" && isRecord(entry.data) ? entry.data : undefined;
 }
 
@@ -46,7 +58,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
   let restorePending = false;
   let tierIntegration: ServiceTierIntegration | undefined;
   function serviceTier(): ServiceTierIntegration | undefined {
-    return tierIntegration ??= getServiceTierIntegration(pi);
+    return (tierIntegration ??= getServiceTierIntegration(pi));
   }
 
   function currentTier(): string | undefined {
@@ -73,7 +85,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     };
   }
 
-  function persist(ctx: ExtensionContext): void {
+  function persist(_ctx: ExtensionContext): void {
     // Keep the unresolved record intact until a preset is successfully applied or cleared.
     if (restorePending) return;
     const data: PresetSessionState = {
@@ -99,7 +111,11 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
       const invalid = invalidTools(original.tools);
       const model = original.model ? ctx.modelRegistry.find(original.model.provider, original.model.id) : undefined;
       if (invalid.length || (original.model && !model)) {
-        notify(ctx, `Cannot restore preset baseline: ${invalid.length ? `unknown tools ${invalid.join(", ")}` : "original model unavailable"}`, "error");
+        notify(
+          ctx,
+          `Cannot restore preset baseline: ${invalid.length ? `unknown tools ${invalid.join(", ")}` : "original model unavailable"}`,
+          "error",
+        );
         return;
       }
       if (model && !(await pi.setModel(model))) {
@@ -118,10 +134,21 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     if (options.persist) persist(ctx);
     if (options.persist && options.storeDefault !== false) clearStoredPresetName();
     deps.renderStatus(ctx);
-    if (options.notify) notify(ctx, original ? "Preset cleared; pre-preset configuration restored" : "Preset cleared; current model and tools retained (no saved baseline)");
+    if (options.notify)
+      notify(
+        ctx,
+        original
+          ? "Preset cleared; pre-preset configuration restored"
+          : "Preset cleared; current model and tools retained (no saved baseline)",
+      );
   }
 
-  async function applyPreset(name: string, preset: Preset, ctx: ExtensionContext, options: ApplyOptions): Promise<boolean> {
+  async function applyPreset(
+    name: string,
+    preset: Preset,
+    ctx: ExtensionContext,
+    options: ApplyOptions,
+  ): Promise<boolean> {
     // Validate all capabilities before model, thinking, tools, or saved state change.
     const invalid = invalidTools(preset.tools ?? []);
     if (invalid.length) {
@@ -176,17 +203,30 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     state.originalState = readOriginalState(data.original);
     const preset = typeof data.name === "string" ? state.presets[data.name] : undefined;
     const tools = isToolList(data.tools) ? data.tools : preset?.tools;
-    const savedTier = data.serviceTier === null || typeof data.serviceTier === "string" ? data.serviceTier : preset?.serviceTier;
+    const savedTier =
+      data.serviceTier === null || typeof data.serviceTier === "string" ? data.serviceTier : preset?.serviceTier;
     if (savedTier && !serviceTier()) {
       restorePending = true;
       state.presetSelectionSource = `session (unresolved: ${data.name ?? "none"})`;
-      notify(ctx, "Saved preset requires service tiers; enable the Codex extension, or apply a preset with serviceTier: null. Saved state retained.", "error");
+      notify(
+        ctx,
+        "Saved preset requires service tiers; enable the Codex extension, or apply a preset with serviceTier: null. Saved state retained.",
+        "error",
+      );
       return true;
     }
-    if ((typeof data.name === "string" && !preset) || invalidTools(preset?.tools ?? []).length || (tools && invalidTools(tools).length)) {
+    if (
+      (typeof data.name === "string" && !preset) ||
+      invalidTools(preset?.tools ?? []).length ||
+      (tools && invalidTools(tools).length)
+    ) {
       restorePending = true;
       state.presetSelectionSource = `session (unresolved: ${data.name ?? "none"})`;
-      notify(ctx, "Saved preset is unavailable or contains unknown tools; saved state retained. Restore its configuration, apply another preset, or use /preset none to restore the baseline. Check /preset status.", "error");
+      notify(
+        ctx,
+        "Saved preset is unavailable or contains unknown tools; saved state retained. Restore its configuration, apply another preset, or use /preset none to restore the baseline. Check /preset status.",
+        "error",
+      );
       return true; // Never silently inherit a different global preset.
     }
     state.activePresetName = typeof data.name === "string" ? data.name : undefined;
@@ -203,7 +243,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
 
   function diagnostics(ctx: ExtensionContext): string {
     const preset = state.activePreset;
-    const source = state.activePresetName ? state.presetSources[state.activePresetName] ?? "unknown" : "none";
+    const source = state.activePresetName ? (state.presetSources[state.activePresetName] ?? "unknown") : "none";
     const startupDefault = readPresetDefault();
     const actual = [
       `Preset: ${state.activePresetName ?? "none"} (selection: ${state.presetSelectionSource})`,
@@ -212,7 +252,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
       `Model: ${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none"} (Pi session; preset: ${preset?.model ?? "unchanged"})`,
       `Thinking: ${pi.getThinkingLevel()} (Pi session; preset: ${preset?.thinkingLevel ?? "unchanged"})`,
       `Tools: ${pi.getActiveTools().join(", ") || "none"} (current; preset: ${preset?.tools?.join(", ") ?? "unchanged"})`,
-      `Service tier: ${currentTier() ?? "standard"} (current; preset: ${preset?.serviceTier === null ? "standard" : preset?.serviceTier ?? "unchanged"})`,
+      `Service tier: ${currentTier() ?? "standard"} (current; preset: ${preset?.serviceTier === null ? "standard" : (preset?.serviceTier ?? "unchanged")})`,
       `Instructions: ${preset?.instructions ? `from ${source}` : "none added"}`,
       `Restore baseline: ${state.originalState ? "saved in session" : "unavailable"}`,
       "Commands: /preset NAME | none | status | default NAME | default none",
@@ -225,24 +265,44 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
   }
 
   function getPresetCompletions(prefix: string): AutocompleteItem[] | null {
-    const values = ["none", "status", "default none", ...getPresetOrder(), ...getPresetOrder().map((name) => `default ${name}`)];
-    return values.filter((value) => value.toLowerCase().startsWith(prefix.toLowerCase())).map((value) => ({ value, label: value }));
+    const values = [
+      "none",
+      "status",
+      "default none",
+      ...getPresetOrder(),
+      ...getPresetOrder().map((name) => `default ${name}`),
+    ];
+    return values
+      .filter((value) => value.toLowerCase().startsWith(prefix.toLowerCase()))
+      .map((value) => ({ value, label: value }));
   }
 
   async function handlePresetCommand(args: string, ctx: ExtensionContext): Promise<void> {
     let name = args.trim();
-    if (name === "status") { notify(ctx, diagnostics(ctx)); return; }
-    if (!ctx.isIdle()) { notify(ctx, "Wait for the current task to finish before changing presets", "warning"); return; }
+    if (name === "status") {
+      notify(ctx, diagnostics(ctx));
+      return;
+    }
+    if (!ctx.isIdle()) {
+      notify(ctx, "Wait for the current task to finish before changing presets", "warning");
+      return;
+    }
     if (name.startsWith("default ")) {
       name = name.slice(8).trim();
       if (name === "none") clearStoredPresetName();
       else if (Object.hasOwn(state.presets, name)) writeStoredPresetName(name);
-      else { notify(ctx, `Unknown preset "${name}"`, "error"); return; }
+      else {
+        notify(ctx, `Unknown preset "${name}"`, "error");
+        return;
+      }
       notify(ctx, `Startup default: ${name}. Current session unchanged.`);
       return;
     }
     if (!name) {
-      if (!ctx.hasUI) { notify(ctx, "Provide /preset NAME in non-interactive mode", "error"); return; }
+      if (!ctx.hasUI) {
+        notify(ctx, "Provide /preset NAME in non-interactive mode", "error");
+        return;
+      }
       const names = getPresetOrder();
       const choices = names.map((name) => `${name} — ${describePreset(state.presets[name])}`);
       const selected = await ctx.ui.select("Session preset", [...choices, "(none) — restore pre-preset configuration"]);
@@ -250,11 +310,27 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
       name = names[choices.indexOf(selected)] ?? "none";
       if (!ctx.isIdle()) return;
     }
-    if (name === "none") { await clearPreset(ctx, { persist: true, notify: true }); return; }
+    if (name === "none") {
+      await clearPreset(ctx, { persist: true, notify: true });
+      return;
+    }
     const preset = Object.hasOwn(state.presets, name) ? state.presets[name] : undefined;
-    if (!preset) { notify(ctx, `Unknown preset "${name}". Available: ${getPresetOrder().join(", ")}`, "error"); return; }
+    if (!preset) {
+      notify(ctx, `Unknown preset "${name}". Available: ${getPresetOrder().join(", ")}`, "error");
+      return;
+    }
     await applyPreset(name, preset, ctx, { persist: true, notify: true });
   }
 
-  return { applyPreset, clearPreset, restore, persist, diagnostics, getPresetOrder, getPresetCompletions, handlePresetCommand, updateStatus: deps.renderStatus };
+  return {
+    applyPreset,
+    clearPreset,
+    restore,
+    persist,
+    diagnostics,
+    getPresetOrder,
+    getPresetCompletions,
+    handlePresetCommand,
+    updateStatus: deps.renderStatus,
+  };
 }

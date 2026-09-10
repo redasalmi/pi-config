@@ -50,7 +50,10 @@ export default function (pi: ExtensionAPI) {
   });
   pi.registerCommand("usage", {
     description: "View account limits/token activity, configure warnings, or confirm a reset redemption",
-    getArgumentCompletions: (prefix) => ["limits", "daily", "weekly", "cumulative", "reset", "warnings on", "warnings off"].filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value })),
+    getArgumentCompletions: (prefix) =>
+      ["limits", "daily", "weekly", "cumulative", "reset", "warnings on", "warnings off"]
+        .filter((value) => value.startsWith(prefix))
+        .map((value) => ({ value, label: value })),
     handler: usage.handleUsageCommand,
   });
 }

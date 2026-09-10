@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { Preset, PresetsConfig, ThinkingLevel } from "./types.ts";
@@ -22,7 +23,8 @@ export function isPreset(value: unknown): value is Preset {
   }
   if (value.instructions !== undefined && typeof value.instructions !== "string") return false;
   if (value.description !== undefined && typeof value.description !== "string") return false;
-  if (value.serviceTier !== undefined && value.serviceTier !== null && typeof value.serviceTier !== "string") return false;
+  if (value.serviceTier !== undefined && value.serviceTier !== null && typeof value.serviceTier !== "string")
+    return false;
   return (value.provider === undefined) === (value.model === undefined);
 }
 
@@ -49,7 +51,10 @@ function loadPresetFile(path: string): PresetsConfig {
   }
 }
 
-export function loadPresets(cwd: string, projectTrusted: boolean): {
+export function loadPresets(
+  cwd: string,
+  projectTrusted: boolean,
+): {
   presets: PresetsConfig;
   sources: Record<string, string>;
 } {
@@ -90,8 +95,16 @@ export function readStoredPresetName(): string | null | undefined {
 
 export function writeStoredPresetName(name: string | null): void {
   const path = join(getAgentDir(), STATE_FILE);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify({ preset: name }, null, 2)}\n`, "utf8");
+  const directory = dirname(path);
+  mkdirSync(directory, { recursive: true });
+  // Write through a temporary file so a crash cannot leave truncated state.
+  const temporary = join(directory, `${STATE_FILE}.${randomUUID()}.tmp`);
+  try {
+    writeFileSync(temporary, `${JSON.stringify({ preset: name }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }
 
 export function clearStoredPresetName(): void {

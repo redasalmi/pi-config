@@ -2,14 +2,19 @@ import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, dirname, relative, resolve } from "node:path";
+import { formatSize, getAgentDir, truncateHead, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import {
-  formatSize,
-  getAgentDir,
-  truncateHead,
-  withFileMutationQueue,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import { assertContained, assertNoSymlinkComponents, assertNoSymlinkEscape, ensureDirectory, isContained, pathExists, projectKey, safeName, sessionKey } from "./paths.ts";
+  assertContained,
+  assertNoSymlinkComponents,
+  assertNoSymlinkEscape,
+  assertNoSymlinksUnder,
+  ensureDirectory,
+  isContained,
+  pathExists,
+  projectKey,
+  safeName,
+  sessionKey,
+} from "./paths.ts";
 import { redactSecrets } from "./redaction.ts";
 import type {
   BrowserArtifact,
@@ -56,12 +61,27 @@ export function createWorkspace(cwd: string, piSessionId: string, runtimeId: str
   };
 }
 
+function workspaceDirectories(workspace: BrowserWorkspace): string[] {
+  return [
+    workspace.outputDir,
+    workspace.playwrightDir,
+    workspace.devtoolsDir,
+    workspace.lighthouseDir,
+    workspace.reportsDir,
+    workspace.cacheDir,
+  ];
+}
+
 function backendDirectory(workspace: BrowserWorkspace, backend: BrowserBackend | "browser"): string {
   switch (backend) {
-    case "playwright": return workspace.playwrightDir;
-    case "chrome_devtools": return workspace.devtoolsDir;
-    case "lighthouse": return workspace.lighthouseDir;
-    case "browser": return workspace.outputDir;
+    case "playwright":
+      return workspace.playwrightDir;
+    case "chrome_devtools":
+      return workspace.devtoolsDir;
+    case "lighthouse":
+      return workspace.lighthouseDir;
+    case "browser":
+      return workspace.outputDir;
   }
 }
 
@@ -79,33 +99,56 @@ function initialManifest(workspace: BrowserWorkspace): BrowserManifest {
 
 function sanitizeManifestArtifacts(workspace: BrowserWorkspace, value: unknown): BrowserArtifact[] {
   if (!Array.isArray(value)) return [];
-  const kinds = new Set<BrowserArtifactKind>(["report", "screenshot", "pdf", "snapshot", "trace", "video", "profile", "log", "output", "other"]);
+  const kinds = new Set<BrowserArtifactKind>([
+    "report",
+    "screenshot",
+    "pdf",
+    "snapshot",
+    "trace",
+    "video",
+    "profile",
+    "log",
+    "output",
+    "other",
+  ]);
   const backends = new Set<BrowserBackend | "browser">(["playwright", "chrome_devtools", "lighthouse", "browser"]);
-  return value.flatMap(item => {
+  return value.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const candidate = item as Partial<BrowserArtifact>;
     if (typeof candidate.id !== "string" || !/^[a-zA-Z0-9._-]{1,128}$/.test(candidate.id)) return [];
     if (typeof candidate.path !== "string") return [];
     const path = resolve(candidate.path);
     if (!isContained(workspace.root, path)) return [];
-    const backend = backends.has(candidate.backend as BrowserBackend | "browser") ? candidate.backend as BrowserBackend | "browser" : "browser";
-    const kind = kinds.has(candidate.kind as BrowserArtifactKind) ? candidate.kind as BrowserArtifactKind : "other";
-    return [{
-      id: candidate.id,
-      backend,
-      kind,
-      path,
-      relativePath: relative(workspace.root, path),
-      createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date(0).toISOString(),
-      ...(typeof candidate.bytes === "number" && Number.isFinite(candidate.bytes) && candidate.bytes >= 0 ? {bytes: candidate.bytes} : {}),
-      ...(typeof candidate.sha256 === "string" && /^[a-fA-F0-9]{64}$/.test(candidate.sha256) ? {sha256: candidate.sha256} : {}),
-      ...(typeof candidate.contentType === "string" ? {contentType: redactSecrets(candidate.contentType)} : {}),
-      ...(typeof candidate.url === "string" ? {url: redactSecrets(candidate.url)} : {}),
-      ...(typeof candidate.title === "string" ? {title: redactSecrets(candidate.title)} : {}),
-      ...(typeof candidate.reportId === "string" && /^[a-zA-Z0-9._-]{1,128}$/.test(candidate.reportId) ? {reportId: candidate.reportId} : {}),
-      sensitive: candidate.sensitive !== false,
-      ...(typeof candidate.correlationId === "string" ? {correlationId: redactSecrets(candidate.correlationId)} : {}),
-    } satisfies BrowserArtifact];
+    const backend = backends.has(candidate.backend as BrowserBackend | "browser")
+      ? (candidate.backend as BrowserBackend | "browser")
+      : "browser";
+    const kind = kinds.has(candidate.kind as BrowserArtifactKind) ? (candidate.kind as BrowserArtifactKind) : "other";
+    return [
+      {
+        id: candidate.id,
+        backend,
+        kind,
+        path,
+        relativePath: relative(workspace.root, path),
+        createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date(0).toISOString(),
+        ...(typeof candidate.bytes === "number" && Number.isFinite(candidate.bytes) && candidate.bytes >= 0
+          ? { bytes: candidate.bytes }
+          : {}),
+        ...(typeof candidate.sha256 === "string" && /^[a-fA-F0-9]{64}$/.test(candidate.sha256)
+          ? { sha256: candidate.sha256 }
+          : {}),
+        ...(typeof candidate.contentType === "string" ? { contentType: redactSecrets(candidate.contentType) } : {}),
+        ...(typeof candidate.url === "string" ? { url: redactSecrets(candidate.url) } : {}),
+        ...(typeof candidate.title === "string" ? { title: redactSecrets(candidate.title) } : {}),
+        ...(typeof candidate.reportId === "string" && /^[a-zA-Z0-9._-]{1,128}$/.test(candidate.reportId)
+          ? { reportId: candidate.reportId }
+          : {}),
+        sensitive: candidate.sensitive !== false,
+        ...(typeof candidate.correlationId === "string"
+          ? { correlationId: redactSecrets(candidate.correlationId) }
+          : {}),
+      } satisfies BrowserArtifact,
+    ];
   });
 }
 
@@ -129,28 +172,25 @@ async function loadManifest(workspace: BrowserWorkspace): Promise<BrowserManifes
 async function persistManifest(workspace: BrowserWorkspace, manifest: BrowserManifest): Promise<void> {
   manifest.updatedAt = new Date().toISOString();
   await assertNoSymlinkEscape(workspace.root, workspace.manifestPath);
-  await withFileMutationQueue(workspace.manifestPath, () => writeFile(
-    workspace.manifestPath,
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    { encoding: "utf8", mode: 0o600 },
-  ));
+  await withFileMutationQueue(workspace.manifestPath, () =>
+    writeFile(workspace.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { encoding: "utf8", mode: 0o600 }),
+  );
 }
 
 async function ensureWorkspaceDirectories(workspace: BrowserWorkspace): Promise<void> {
   // Validate the existing parent chain before mkdir can follow a symlink, then
   // validate it again after creation to close first-use races.
   const trustedParent = dirname(dirname(rootPath()));
-  await assertNoSymlinkComponents(trustedParent, rootPath());
+  await assertNoSymlinksUnder(trustedParent, [rootPath()]);
   await ensureDirectory(rootPath());
-  await assertNoSymlinkComponents(trustedParent, rootPath());
-  await assertNoSymlinkComponents(rootPath(), workspace.root);
+  await assertNoSymlinksUnder(trustedParent, [rootPath()]);
+  await assertNoSymlinksUnder(rootPath(), [workspace.root]);
   await ensureDirectory(workspace.root);
-  await assertNoSymlinkComponents(rootPath(), workspace.root);
-  for (const directory of [workspace.outputDir, workspace.playwrightDir, workspace.devtoolsDir, workspace.lighthouseDir, workspace.reportsDir, workspace.cacheDir]) {
-    await assertNoSymlinkComponents(workspace.root, directory);
-    await ensureDirectory(directory);
-    await assertNoSymlinkComponents(workspace.root, directory);
-  }
+  await assertNoSymlinksUnder(rootPath(), [workspace.root]);
+  const directories = workspaceDirectories(workspace);
+  await assertNoSymlinksUnder(workspace.root, directories);
+  for (const directory of directories) await ensureDirectory(directory);
+  await assertNoSymlinksUnder(workspace.root, directories);
   if (await pathExists(workspace.manifestPath)) {
     await assertNoSymlinkEscape(workspace.root, workspace.manifestPath);
   } else {
@@ -167,7 +207,8 @@ function inferKind(path: string, fallback: BrowserArtifactKind): BrowserArtifact
   if (extension === "pdf") return "pdf";
   if (extension === "mp4" || extension === "webm") return "video";
   if (extension === "gz" || extension === "trace" || extension === "heapsnapshot") return "trace";
-  if (extension === "html" || extension === "json" || extension === "csv") return fallback === "report" ? "report" : fallback;
+  if (extension === "html" || extension === "json" || extension === "csv")
+    return fallback === "report" ? "report" : fallback;
   return fallback;
 }
 
@@ -175,7 +216,7 @@ async function sha256File(path: string): Promise<string | undefined> {
   return new Promise((resolveHash) => {
     const hash = createHash("sha256");
     const stream = createReadStream(path);
-    stream.on("data", chunk => hash.update(chunk));
+    stream.on("data", (chunk) => hash.update(chunk));
     stream.on("end", () => resolveHash(hash.digest("hex")));
     stream.on("error", () => resolveHash(undefined));
   });
@@ -206,7 +247,7 @@ export class BrowserArtifactStore {
   async ensure(workspace: BrowserWorkspace): Promise<void> {
     let initialization = this.initialized.get(workspace.root);
     if (!initialization) {
-      initialization = ensureWorkspaceDirectories(workspace).catch(error => {
+      initialization = ensureWorkspaceDirectories(workspace).catch((error) => {
         this.initialized.delete(workspace.root);
         throw error;
       });
@@ -215,10 +256,9 @@ export class BrowserArtifactStore {
     await initialization;
     // Cache mkdir/chmod, never trust a cached path: an ancestor can be replaced
     // between operations. Individual reads/writes also validate their target.
-    await assertNoSymlinkComponents(dirname(dirname(rootPath())), workspace.root);
-    for (const directory of [workspace.outputDir, workspace.playwrightDir, workspace.devtoolsDir, workspace.lighthouseDir, workspace.reportsDir, workspace.cacheDir]) {
-      await assertNoSymlinkComponents(workspace.root, directory);
-    }
+    // Resolve each trusted root once instead of once per validated path.
+    await assertNoSymlinksUnder(dirname(dirname(rootPath())), [workspace.root]);
+    await assertNoSymlinksUnder(workspace.root, workspaceDirectories(workspace));
   }
 
   async allocateFile(
@@ -281,7 +321,7 @@ export class BrowserArtifactStore {
           return;
         }
         if (!info.isDirectory()) return;
-        const entries = await readdir(path, {withFileTypes: true});
+        const entries = await readdir(path, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isSymbolicLink()) continue;
           await collect(join(path, entry.name));
@@ -306,7 +346,7 @@ export class BrowserArtifactStore {
           relativePath,
           createdAt: new Date(info.mtimeMs).toISOString(),
           bytes: info.size,
-          ...(sha256 ? {sha256} : {}),
+          ...(sha256 ? { sha256 } : {}),
           contentType: contentType(path),
           url: options.url ? redactSecrets(options.url) : undefined,
           title: options.title ? redactSecrets(options.title) : undefined,
@@ -324,7 +364,13 @@ export class BrowserArtifactStore {
       if (records.length > 0) await persistManifest(workspace, manifest);
       return records;
     });
-    this.manifestWrites.set(manifestKey, operation.then(() => undefined, () => undefined));
+    this.manifestWrites.set(
+      manifestKey,
+      operation.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
     return operation;
   }
 
@@ -346,7 +392,9 @@ export class BrowserArtifactStore {
     if (!truncation.truncated) return { text: truncation.content, truncated: false };
 
     const fullOutputPath = await this.allocateFile(workspace, "browser", `${options.prefix ?? "output"}.txt`, "output");
-    await withFileMutationQueue(fullOutputPath, () => writeFile(fullOutputPath, input, { encoding: "utf8", mode: 0o600 }));
+    await withFileMutationQueue(fullOutputPath, () =>
+      writeFile(fullOutputPath, input, { encoding: "utf8", mode: 0o600 }),
+    );
     await this.record(workspace, "browser", [fullOutputPath], "output", options);
     const notice = [
       `Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`,
@@ -377,7 +425,7 @@ export class BrowserArtifactStore {
     const existed = await pathExists(target);
     if (existed) {
       await assertNoSymlinkEscape(root, target);
-      await rm(target, {recursive: true, force: true});
+      await rm(target, { recursive: true, force: true });
     }
     this.initialized.delete(workspace.root);
     this.manifestWrites.delete(workspace.manifestPath);
@@ -387,7 +435,8 @@ export class BrowserArtifactStore {
   static formatManifest(manifest: BrowserManifest): string {
     const totalBytes = manifest.artifacts.reduce((sum, artifact) => sum + (artifact.bytes ?? 0), 0);
     const byBackend = new Map<string, number>();
-    for (const artifact of manifest.artifacts) byBackend.set(artifact.backend, (byBackend.get(artifact.backend) ?? 0) + 1);
+    for (const artifact of manifest.artifacts)
+      byBackend.set(artifact.backend, (byBackend.get(artifact.backend) ?? 0) + 1);
     const counts = [...byBackend.entries()].map(([backend, count]) => `${backend}=${count}`).join(", ") || "none";
     return [
       `Browser artifacts: ${manifest.artifacts.length} (${formatSize(totalBytes)})`,

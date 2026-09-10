@@ -18,14 +18,20 @@ let directory: string;
 let previousDirectory: string | undefined;
 let originalFetch: typeof fetch;
 const instances: ReturnType<typeof setup>[] = [];
-function fixture() { const value = setup(); instances.push(value); return value; }
+function fixture() {
+  const value = setup();
+  instances.push(value);
+  return value;
+}
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "pi-opencode-test-"));
   previousDirectory = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = directory;
   originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => { throw new Error("Unexpected network request"); };
+  globalThis.fetch = async () => {
+    throw new Error("Unexpected network request");
+  };
 });
 afterEach(async () => {
   for (const { h } of instances.splice(0)) await h.emit("session_shutdown");
@@ -51,7 +57,8 @@ test("parses all windows, preserves server status and timestamps, rejects missin
   assert.equal(parsed.windows.rolling.usedPercent, 77);
   assert.equal(parsed.windows.weekly.status, "rate-limited");
   assert.equal(parsed.windows.monthly.resetsAt, Date.parse(input.usage.monthly.resetsAt));
-  for (const invalid of [null, {}, { usage: { rolling: input.usage.rolling } }]) assert.throws(() => parseUsage(invalid));
+  for (const invalid of [null, {}, { usage: { rolling: input.usage.rolling } }])
+    assert.throws(() => parseUsage(invalid));
   for (const percent of [-1, 101, NaN, Infinity, "20", null]) {
     assert.throws(() => parseUsage({ usage: { ...input.usage, rolling: { ...input.usage.rolling, percent } } }));
   }
@@ -87,7 +94,10 @@ test("single-flight requests and minute throttle; explicit refresh bypasses thro
   const { h, usage } = fixture();
   const pending = deferred<Response>();
   let calls = 0;
-  globalThis.fetch = async () => { calls++; return pending.promise; };
+  globalThis.fetch = async () => {
+    calls++;
+    return pending.promise;
+  };
   const first = usage.refresh(h.ctx);
   const second = usage.refresh(h.ctx, true);
   assert.equal(first, second);
@@ -95,17 +105,26 @@ test("single-flight requests and minute throttle; explicit refresh bypasses thro
   await first;
   assert.equal(calls, 1);
   assert.equal(await usage.refresh(h.ctx), false);
-  globalThis.fetch = async () => { calls++; return response(); };
+  globalThis.fetch = async () => {
+    calls++;
+    return response();
+  };
   await usage.refresh(h.ctx, true);
   assert.equal(calls, 2);
 });
 
 test("401/403 forget cached accounts; endpoint throttling and service failures remain distinguishable", async () => {
   const { h, usage, state } = fixture();
-  for (const [status, issue] of [[401, "auth"], [403, "entitlement"], [429, "rate-limit"], [503, "server"]] as const) {
+  for (const [status, issue] of [
+    [401, "auth"],
+    [403, "entitlement"],
+    [429, "rate-limit"],
+    [503, "server"],
+  ] as const) {
     globalThis.fetch = async () => response();
     await usage.refresh(h.ctx, true);
-    globalThis.fetch = async () => new Response("private server contents", { status, headers: { "retry-after": "120" } });
+    globalThis.fetch = async () =>
+      new Response("private server contents", { status, headers: { "retry-after": "120" } });
     assert.equal(await usage.refresh(h.ctx, true), false);
     assert.equal(state.issue, issue);
     assert.equal(state.httpStatus, status);
@@ -123,7 +142,9 @@ test("missing/auth-failed credentials never retain prior quota or expose excepti
   await usage.refresh(h.ctx, true);
   assert.equal(state.issue, "missing-key");
   assert.equal(state.snapshot, undefined);
-  t.mock.method(h.ctx.modelRegistry, "getProviderAuth", async () => { throw new Error("fixture-secret"); });
+  t.mock.method(h.ctx.modelRegistry, "getProviderAuth", async () => {
+    throw new Error("fixture-secret");
+  });
   await usage.refresh(h.ctx, true);
   assert.equal(state.issue, "auth");
   assert.ok(!usageText(state).includes("fixture-secret"));
@@ -132,7 +153,10 @@ test("missing/auth-failed credentials never retain prior quota or expose excepti
 test("rejects overridden Go endpoints before sending credentials", async () => {
   const { h, usage, state } = fixture();
   let calls = 0;
-  globalThis.fetch = async () => { calls++; return response(); };
+  globalThis.fetch = async () => {
+    calls++;
+    return response();
+  };
   h.model = model("opencode-go", "https://proxy.invalid/v1");
   await usage.refresh(h.ctx);
   assert.equal(state.issue, "endpoint");
@@ -158,7 +182,9 @@ test("credential rotation clears previous snapshot even when replacement account
   globalThis.fetch = async () => response(payload(90));
   await usage.refresh(h.ctx);
   h.auth = { auth: { apiKey: "different-fixture" } };
-  globalThis.fetch = async () => { throw new Error("failure containing different-fixture"); };
+  globalThis.fetch = async () => {
+    throw new Error("failure containing different-fixture");
+  };
   await usage.refresh(h.ctx, true);
   assert.equal(state.issue, "network");
   assert.equal(state.snapshot, undefined);
@@ -187,7 +213,10 @@ test("cancellation suppresses stale completion and immediate cancellation avoids
   assert.equal(h.authCalls, 0);
   const pending = deferred<Response>();
   const called = deferred<void>();
-  globalThis.fetch = async () => { called.resolve(); return pending.promise; };
+  globalThis.fetch = async () => {
+    called.resolve();
+    return pending.promise;
+  };
   const first = usage.refresh(h.ctx);
   await called.promise;
   usage.reset();
@@ -206,7 +235,10 @@ test("auth resolution has a deadline and late auth cannot issue an HTTP request"
   t.mock.method(AbortSignal, "timeout", () => timeout.signal);
   t.mock.method(h.ctx.modelRegistry, "getProviderAuth", () => pending.promise);
   let calls = 0;
-  globalThis.fetch = async () => { calls++; return response(); };
+  globalThis.fetch = async () => {
+    calls++;
+    return response();
+  };
   const first = usage.refresh(h.ctx);
   await Promise.resolve();
   timeout.abort(new DOMException("Timed out", "TimeoutError"));
@@ -221,10 +253,17 @@ test("shutdown cancels a pending response body and does not show a late command 
   const { h, state } = fixture();
   const reading = deferred<void>();
   let cancelled = false;
-  globalThis.fetch = async () => new Response(new ReadableStream({
-    pull() { reading.resolve(); },
-    cancel() { cancelled = true; },
-  }));
+  globalThis.fetch = async () =>
+    new Response(
+      new ReadableStream({
+        pull() {
+          reading.resolve();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
   const command = h.command("usage");
   await reading.promise;
   await h.emit("session_shutdown");
@@ -241,9 +280,16 @@ test("a stalled body reader is cancelled when the overall deadline expires", asy
   const reading = deferred<void>();
   const timeout = new AbortController();
   let cancelled = false;
-  const body = new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } });
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelled = true;
+    },
+  });
   const getReader = body.getReader.bind(body);
-  t.mock.method(body, "getReader", () => { reading.resolve(); return getReader(); });
+  t.mock.method(body, "getReader", () => {
+    reading.resolve();
+    return getReader();
+  });
   t.mock.method(AbortSignal, "timeout", () => timeout.signal);
   globalThis.fetch = async () => new Response(body);
   const pending = usage.refresh(h.ctx);
@@ -260,7 +306,10 @@ test("429 backoff is separate from quota status and manual refresh can retry", a
   await usage.refresh(h.ctx);
   state.lastAttempt = Date.now() - MIN_REFRESH_MS - 1;
   let calls = 0;
-  globalThis.fetch = async () => { calls++; return response(); };
+  globalThis.fetch = async () => {
+    calls++;
+    return response();
+  };
   assert.equal(await usage.refresh(h.ctx), false);
   assert.equal(calls, 0);
   assert.match(usageText(state), /does not prove Go quota exhaustion/);
@@ -359,7 +408,10 @@ test("informational commands work over RPC without launching a model or browser"
   const { h } = fixture();
   Object.assign(h.ctx, { mode: "rpc" });
   let calls = 0;
-  globalThis.fetch = async () => { calls++; return response(payload(60)); };
+  globalThis.fetch = async () => {
+    calls++;
+    return response(payload(60));
+  };
   await h.command("usage");
   assert.match(h.notices.at(-1)!.text, /40% remaining/);
   await h.command("status");
@@ -378,7 +430,9 @@ test("print/JSON modes make no automatic or command-triggered account requests a
   const { h } = fixture();
   const errors: string[] = [];
   t.mock.method(console, "error", (text: string) => errors.push(text));
-  t.mock.method(console, "log", () => { assert.fail("Unexpected stdout"); });
+  t.mock.method(console, "log", () => {
+    assert.fail("Unexpected stdout");
+  });
   for (const mode of ["print", "json"] as const) {
     Object.assign(h.ctx, { hasUI: false, mode });
     await h.emit("session_start");
@@ -531,11 +585,29 @@ test("idle timer updates freshness, respects throttle and stops on shutdown", as
 });
 
 function assistant(id: string, provider = "opencode-go"): SessionEntry {
-  return { type: "message", id, parentId: null, timestamp: new Date().toISOString(), message: {
-    role: "assistant", provider, model: "test", api: "openai-completions", timestamp: Date.now(), content: [], stopReason: "stop",
-    usage: { input: 10, output: 20, cacheRead: 30, cacheWrite: 40, totalTokens: 100,
-      cost: { input: 0.01, output: 0.02, cacheRead: 0.03, cacheWrite: 0.04, total: 0.1 } },
-  } };
+  return {
+    type: "message",
+    id,
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    message: {
+      role: "assistant",
+      provider,
+      model: "test",
+      api: "openai-completions",
+      timestamp: Date.now(),
+      content: [],
+      stopReason: "stop",
+      usage: {
+        input: 10,
+        output: 20,
+        cacheRead: 30,
+        cacheWrite: 40,
+        totalTokens: 100,
+        cost: { input: 0.01, output: 0.02, cacheRead: 0.03, cacheWrite: 0.04, total: 0.1 },
+      },
+    },
+  };
 }
 
 test("stats count only attributed Go assistant messages on the supplied branch without double counting compaction tails", async () => {
@@ -544,8 +616,16 @@ test("stats count only attributed Go assistant messages on the supplied branch w
   const aborted = assistant("2");
   if (aborted.type === "message") (aborted.message as AssistantMessage).stopReason = "aborted";
   // Pi 0.85.1 adds retainedTail; keep the fixture compatible with the pinned 0.85.0 types too.
-  const summary = { type: "compaction" as const, id: "3", parentId: "2", timestamp: new Date().toISOString(),
-    summary: "summary", firstKeptEntryId: "1", tokensBefore: 100, retainedTail: first.type === "message" ? [first.message] : [] };
+  const summary = {
+    type: "compaction" as const,
+    id: "3",
+    parentId: "2",
+    timestamp: new Date().toISOString(),
+    summary: "summary",
+    firstKeptEntryId: "1",
+    tokensBefore: 100,
+    retainedTail: first.type === "message" ? [first.message] : [],
+  };
   const entries = [first, first, aborted, assistant("other", "opencode"), summary];
   const stats = collectStats(entries);
   assert.equal(stats.messages, 2);

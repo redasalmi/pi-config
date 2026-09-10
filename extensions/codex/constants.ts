@@ -23,7 +23,3 @@ export const STATUSLINE_ITEMS: readonly StatuslineItem[] = [
   "git",
 ];
 export const DEFAULT_STATUSLINE: StatuslineItem[] = ["preset", "service-tier", "usage", "credits"];
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

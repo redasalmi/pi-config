@@ -5,16 +5,25 @@ export const CONSOLE_URL = "https://opencode.ai/auth";
 export const MIN_REFRESH_MS = 60_000;
 export const STALE_AFTER_MS = 15 * 60_000;
 export const WINDOW_NAMES = ["rolling", "weekly", "monthly"] as const;
-export type WindowName = typeof WINDOW_NAMES[number];
+export type WindowName = (typeof WINDOW_NAMES)[number];
 export const WINDOW_LABELS: Record<WindowName, string> = { rolling: "5h", weekly: "week", monthly: "month" };
 export const STATUSLINE_ITEMS = ["usage", "resets", "model", "thinking", "context", "freshness"] as const;
-export type StatuslineItem = typeof STATUSLINE_ITEMS[number];
+export type StatuslineItem = (typeof STATUSLINE_ITEMS)[number];
 export type Settings = { warnings: boolean; statusline: StatuslineItem[] };
 export const defaultSettings = (): Settings => ({ warnings: true, statusline: ["usage"] });
 
 export type UsageWindow = { status: "ok" | "rate-limited"; usedPercent: number; resetsAt: number };
 export type Snapshot = { windows: Record<WindowName, UsageWindow>; observedAt: number };
-export type Issue = "missing-key" | "auth" | "entitlement" | "network" | "timeout" | "invalid-response" | "rate-limit" | "server" | "endpoint";
+export type Issue =
+  | "missing-key"
+  | "auth"
+  | "entitlement"
+  | "network"
+  | "timeout"
+  | "invalid-response"
+  | "rate-limit"
+  | "server"
+  | "endpoint";
 export type State = {
   settings: Settings;
   snapshot?: Snapshot;
@@ -31,8 +40,12 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isStale(state: State, now = Date.now()): boolean {
-  return Boolean(state.snapshot && (state.issue || now - state.snapshot.observedAt > STALE_AFTER_MS ||
-    WINDOW_NAMES.some((name) => state.snapshot!.windows[name].resetsAt <= now)));
+  return Boolean(
+    state.snapshot &&
+    (state.issue ||
+      now - state.snapshot.observedAt > STALE_AFTER_MS ||
+      WINDOW_NAMES.some((name) => state.snapshot!.windows[name].resetsAt <= now)),
+  );
 }
 
 export function resetText(resetsAt: number, now = Date.now()): string {
@@ -43,6 +56,10 @@ export function resetText(resetsAt: number, now = Date.now()): string {
   return `resets in ${[days ? `${days}d` : "", hours ? `${hours}h` : "", !days ? `${minutes % 60}m` : ""].filter(Boolean).join(" ")}`;
 }
 
-export function notify(ctx: { hasUI: boolean; ui: { notify(message: string, type?: "info" | "warning" | "error"): void } }, text: string, type: "info" | "warning" | "error" = "info"): void {
+export function notify(
+  ctx: { hasUI: boolean; ui: { notify(message: string, type?: "info" | "warning" | "error"): void } },
+  text: string,
+  type: "info" | "warning" | "error" = "info",
+): void {
   if (ctx.hasUI) ctx.ui.notify(text, type);
 }

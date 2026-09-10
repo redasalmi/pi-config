@@ -22,7 +22,9 @@ before(async () => {
   await writeFile(join(repo, "README.md"), `${readme}\nStaged test change\nUnstaged test change\n`);
   await writeFile(join(repo, "untracked-example.txt"), "Untracked fixture\n");
 });
-after(async () => { if (directory) await rm(directory, { recursive: true, force: true }); });
+after(async () => {
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 test("pinReview resolves immutable commit ids and a merge base using local refs", async () => {
   const pinned = await pinReview(repo, "HEAD~1", "HEAD");
@@ -63,10 +65,20 @@ test("Git output is bounded during collection and marks truncation", async () =>
   const path = join(repo, "large-untracked.txt");
   await writeFile(path, "This is a test fixture line\n".repeat(10000));
   try {
-    const result = await runGit(repo, ["diff", "--no-index", "--no-ext-diff", "--no-textconv", "--", "/dev/null", path]);
+    const result = await runGit(repo, [
+      "diff",
+      "--no-index",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--",
+      "/dev/null",
+      path,
+    ]);
     assert.equal(result.truncated, true);
     assert.ok(Buffer.byteLength(result.stdout) <= 50 * 1024);
-  } finally { await rm(path); }
+  } finally {
+    await rm(path);
+  }
 });
 
 test("committed review reuses the skill with pinned SHAs; working review is a separate scope", async () => {

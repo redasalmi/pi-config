@@ -1,16 +1,13 @@
-import {access} from "node:fs/promises";
-import {join, resolve} from "node:path";
-import {
-  formatSize,
-  truncateHead,
-  type ExtensionAPI,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import { access } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { redirectOutputOption, resolveReportedPaths } from "../routing.ts";
 import { artifactIdsForPaths } from "../output.ts";
-import {safeName} from "../paths.ts";
-import {redactSecrets as redactBrowserSecrets} from "../redaction.ts";
-import type {BrowserOperationMetadata, BrowserRuntime} from "../types.ts";
+import { safeName } from "../paths.ts";
+import { redactSecrets } from "../redaction.ts";
+import { commandLabel } from "./process.ts";
+import { extractArtifactPathsByExtension, parsePageState, truncateText } from "./shared.ts";
+import type { BrowserOperationMetadata, BrowserRuntime } from "../types.ts";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
@@ -81,12 +78,7 @@ type Command = (typeof COMMANDS)[number];
 
 type OptionValue = string | number | boolean | string[];
 
-const optionValue = Type.Union([
-  Type.String(),
-  Type.Number(),
-  Type.Boolean(),
-  Type.Array(Type.String()),
-]);
+const optionValue = Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]);
 
 const chromeDevtoolsParameters = Type.Object({
   command: StringEnum(COMMANDS, {
@@ -139,8 +131,7 @@ const MAX_OUTPUT_LINES = 1_800;
 const MAX_DETAIL_OUTPUT_BYTES = 4_000;
 const MAX_DETAIL_OUTPUT_LINES = 100;
 const DEFAULT_TIMEOUT = 120_000;
-const ARTIFACT_EXTENSIONS =
-  "png|jpeg|jpg|webp|html|json|csv|txt|gz|mp4|heapsnapshot|network-request|network-response";
+const ARTIFACT_EXTENSIONS = "png|jpeg|jpg|webp|html|json|csv|txt|gz|mp4|heapsnapshot|network-request|network-response";
 
 const REQUIRED_ARG_COUNTS: Record<Command, number> = {
   click: 2,
@@ -204,15 +195,11 @@ const REQUIRED_ARG_COUNTS: Record<Command, number> = {
   version: 0,
 };
 
-function truncateText(input: string, maxBytes = MAX_OUTPUT_BYTES, maxLines = MAX_OUTPUT_LINES): string {
-  return truncateHead(input, {maxBytes, maxLines}).content;
-}
-
 async function truncateOutput(
   runtime: BrowserRuntime,
   ctx: ExtensionContext,
   input: string,
-  metadata: {correlationId?: string; url?: string; title?: string} = {},
+  metadata: { correlationId?: string; url?: string; title?: string } = {},
 ): Promise<{ text: string; fullOutputPath?: string }> {
   const result = await runtime.output(ctx, input, {
     maxBytes: MAX_OUTPUT_BYTES,
@@ -220,116 +207,7 @@ async function truncateOutput(
     prefix: "chrome-devtools-output",
     ...metadata,
   });
-  return {text: result.text, fullOutputPath: result.fullOutputPath};
-}
-
-const SENSITIVE_FIELD_NAMES = new Set([
-  "authorization",
-  "proxy-authorization",
-  "cookie",
-  "set-cookie",
-  "x-api-key",
-  "api-key",
-  "x-auth-token",
-  "auth-token",
-  "password",
-  "passwd",
-  "token",
-  "access-token",
-  "refresh-token",
-  "csrf-token",
-  "client-secret",
-  "x-secret",
-  "secret",
-]);
-
-const SENSITIVE_FIELD_PATTERN = [
-  "proxy[-_]?authorization",
-  "authorization",
-  "set[-_]?cookie",
-  "cookie",
-  "x[-_]?api[-_]?key",
-  "api[-_]?key",
-  "x[-_]?auth[-_]?token",
-  "auth[-_]?token",
-  "access[-_]?token",
-  "refresh[-_]?token",
-  "csrf[-_]?token",
-  "password",
-  "passwd",
-  "token",
-  "client[-_]?secret",
-  "x[-_]?secret",
-  "secret",
-].join("|");
-
-function normalizedFieldName(value: string): string {
-  return value
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function isSensitiveFieldName(value: string): boolean {
-  const normalized = normalizedFieldName(value);
-  return SENSITIVE_FIELD_NAMES.has(normalized)
-    || /(^|-)(?:authorization|cookie|password|passwd|token|secret)(?:-|$)/.test(normalized)
-    || /(^|-)api-key(?:-|$)/.test(normalized);
-}
-
-function redactPlainText(input: string): string {
-  return input
-    // JSON embedded in otherwise plain output, for example daemon status args.
-    .replace(
-      new RegExp(`(\\b(?:${SENSITIVE_FIELD_PATTERN})\\b\\\\?["']\\s*:\\s*\\\\?["'])(.*?)(?=\\\\?["'])`, "gi"),
-      "$1[REDACTED]",
-    )
-    .replace(
-      new RegExp(`(\\b(?:${SENSITIVE_FIELD_PATTERN})\\b["']?\\s*:\\s*["'])(.*?)(?=["'])`, "gi"),
-      "$1[REDACTED]",
-    )
-    .replace(
-      new RegExp(`(\\b(?:${SENSITIVE_FIELD_PATTERN})\\b\\s*:\\s*)[^\\r\\n]+`, "gi"),
-      "$1[REDACTED]",
-    )
-    // Covers query strings and form-like output, including snake_case keys.
-    .replace(
-      new RegExp(`(\\b(?:${SENSITIVE_FIELD_PATTERN})\\b\\s*=\\s*)(?:["'][^"']*["']|[^\\s,;&}\\]]+)`, "gi"),
-      "$1[REDACTED]",
-    );
-}
-
-function redactStructured(value: unknown): unknown {
-  if (typeof value === "string") return redactPlainText(value);
-  if (Array.isArray(value)) {
-    if (value.length === 2 && typeof value[0] === "string" && isSensitiveFieldName(value[0])) {
-      return [value[0], "[REDACTED]"];
-    }
-    return value.map(redactStructured);
-  }
-  if (!value || typeof value !== "object") return value;
-
-  const record = value as Record<string, unknown>;
-  const namedSensitiveValue = typeof record.name === "string" && isSensitiveFieldName(record.name);
-  const redacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(record)) {
-    if (isSensitiveFieldName(key) || (namedSensitiveValue && key.toLowerCase() === "value")) {
-      redacted[key] = "[REDACTED]";
-    } else {
-      redacted[key] = redactStructured(entry);
-    }
-  }
-  return redacted;
-}
-
-function redactSecrets(input: string): string {
-  try {
-    return redactBrowserSecrets(JSON.stringify(redactStructured(JSON.parse(input))));
-  } catch {
-    return redactBrowserSecrets(redactPlainText(input));
-  }
+  return { text: result.text, fullOutputPath: result.fullOutputPath };
 }
 
 function requiredArgs(args: string[] | undefined): string[] {
@@ -343,8 +221,8 @@ function validateCommandArgs(command: Command, args: string[] | undefined): void
 
   const noun = expected === 1 ? "argument" : "arguments";
   throw new Error(
-    `${command} requires ${command === "upload_file" ? "at least" : "exactly"} ${expected} positional ${noun}; received ${actual}. `
-      + `Run chrome-devtools ${command} --help for the current command contract.`,
+    `${command} requires ${command === "upload_file" ? "at least" : "exactly"} ${expected} positional ${noun}; received ${actual}. ` +
+      `Run chrome-devtools ${command} --help for the current command contract.`,
   );
 }
 
@@ -374,11 +252,13 @@ function buildCliArgs(params: ChromeDevtoolsParams, sessionId: string): string[]
     args.push(`--output-format=${params.outputFormat}`);
   }
 
-  const options: Record<string, OptionValue> = {...(params.options ?? {})};
+  const options: Record<string, OptionValue> = { ...params.options };
   for (const name of Object.keys(options)) {
     const normalized = name.toLowerCase().replace(/[^a-z]/g, "");
     if (normalized === "browserurl" || normalized === "wsendpoint") {
-      throw new Error("Direct Chrome endpoints are disabled; configure a local endpoint with browser prepare or handoff.");
+      throw new Error(
+        "Direct Chrome endpoints are disabled; configure a local endpoint with browser prepare or handoff.",
+      );
     }
   }
   if (command === "start") {
@@ -396,39 +276,6 @@ function buildCliArgs(params: ChromeDevtoolsParams, sessionId: string): string[]
   }
 
   return args;
-}
-
-function shellQuote(value: string): string {
-  return /[^a-zA-Z0-9_./:=@%+,-]/.test(value) ? JSON.stringify(value) : value;
-}
-
-function commandLabel(args: string[]): string {
-  return `chrome-devtools ${args.map(shellQuote).join(" ")}`;
-}
-
-function cleanArtifactPath(value: string): string {
-  return value.replace(/[),.;]+$/g, "");
-}
-
-function extractArtifacts(output: string): string[] {
-  const pathPattern = new RegExp(
-    `(?:^|[\\s([\\\"'])((?:/|\\./|[A-Za-z]:[\\\\/])[^\\s)\\],;\\\"']+\\.(?:${ARTIFACT_EXTENSIONS}))`,
-    "g",
-  );
-  const paths: string[] = [];
-  for (const match of output.matchAll(pathPattern)) {
-    paths.push(cleanArtifactPath(match[1]));
-  }
-  return [...new Set(paths)];
-}
-
-function parsePageState(output: string): {url?: string; title?: string} {
-  const url = output.match(/(?:Page URL|URL):\s*([^\n\r]+)/i)?.[1]?.trim();
-  const title = output.match(/Page Title:\s*([^\n\r]+)/i)?.[1]?.trim();
-  return {
-    url: url && url !== "undefined" ? url : undefined,
-    title: title && title !== "undefined" ? title : undefined,
-  };
 }
 
 function sharedEndpointFlag(endpoint: string): string {
@@ -459,9 +306,13 @@ function reportsCliError(stdout: string, stderr: string, format: ChromeDevtoolsP
     // content for successful JSON results. Its exit code alone is insufficient.
     if (parsed?.isError === true) return true;
     if (Array.isArray(parsed)) {
-      return (parsed.length > 0 && parsed.every(item =>
-        item && typeof item === "object" && item.type === "text" && typeof item.text === "string"
-      )) || /(?:^|\n)Error:\s/i.test(stderr);
+      return (
+        (parsed.length > 0 &&
+          parsed.every(
+            (item) => item && typeof item === "object" && item.type === "text" && typeof item.text === "string",
+          )) ||
+        /(?:^|\n)Error:\s/i.test(stderr)
+      );
     }
     return /(?:^|\n)Error:\s/i.test(stderr);
   } catch {
@@ -480,10 +331,13 @@ async function ensureDaemon(
 ): Promise<void> {
   const current = await runtime.state(ctx);
   if (current.chromeDevtoolsPid && processIsAlive(current.chromeDevtoolsPid)) return;
-  await runtime.updateState(ctx, {chromeDevtoolsPid: null});
+  await runtime.updateState(ctx, { chromeDevtoolsPid: null });
   const workspace = await runtime.ensure(ctx);
   const checkStatus = async (): Promise<number | undefined> => {
-    const status = await runtime.exec(pi, "chrome-devtools", [`--sessionId=${sessionId}`, "status"], ctx, {signal, timeout});
+    const status = await runtime.exec(pi, "chrome-devtools", [`--sessionId=${sessionId}`, "status"], ctx, {
+      signal,
+      timeout,
+    });
     if (status.code !== 0 || status.killed) {
       throw new Error(`Chrome DevTools status failed: ${redactSecrets(`${status.stdout}\n${status.stderr}`)}`);
     }
@@ -491,7 +345,7 @@ async function ensureDaemon(
   };
   const existingPid = await checkStatus();
   if (existingPid) {
-    await runtime.updateState(ctx, {chromeDevtoolsPid: existingPid, lastBackend: "chrome_devtools"});
+    await runtime.updateState(ctx, { chromeDevtoolsPid: existingPid, lastBackend: "chrome_devtools" });
     return;
   }
 
@@ -511,11 +365,13 @@ async function ensureDaemon(
   });
   if (started.code !== 0 || started.killed) {
     const output = redactSecrets(`${started.stdout}\n${started.stderr}`.trim());
-    throw new Error(`${commandLabel(startArgs)} failed\n\n${truncateText(output)}`);
+    throw new Error(
+      `${commandLabel("chrome-devtools", startArgs)} failed\n\n${truncateText(output, MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES)}`,
+    );
   }
   const pid = await checkStatus();
   if (!pid) throw new Error("Chrome DevTools started without a running daemon PID.");
-  await runtime.updateState(ctx, {chromeDevtoolsPid: pid, lastBackend: "chrome_devtools"});
+  await runtime.updateState(ctx, { chromeDevtoolsPid: pid, lastBackend: "chrome_devtools" });
 }
 
 async function executeCommand(
@@ -536,30 +392,43 @@ async function executeCommand(
     }),
   };
   validateCommandArgs(command, inputParams.args);
-  const inputPaths = command === "upload_file"
-    ? inputParams.args?.slice(2) ?? []
-    : command === "install_extension" && inputParams.args?.[0]
-      ? [inputParams.args[0]]
-      : [];
-  await Promise.all(inputPaths.map(async inputPath => {
-    try {
-      await access(inputPath);
-    } catch {
-      throw new Error(`Chrome DevTools input path is not readable: ${inputPath}`);
-    }
-  }));
+  const inputPaths =
+    command === "upload_file"
+      ? (inputParams.args?.slice(2) ?? [])
+      : command === "install_extension" && inputParams.args?.[0]
+        ? [inputParams.args[0]]
+        : [];
+  await Promise.all(
+    inputPaths.map(async (inputPath) => {
+      try {
+        await access(inputPath);
+      } catch {
+        throw new Error(`Chrome DevTools input path is not readable: ${inputPath}`);
+      }
+    }),
+  );
   const workspace = await runtime.ensure(ctx);
   const browserState = await runtime.state(ctx);
 
   const sessionId = browserState.chromeDevtoolsSession;
   const timeout = params.timeoutMs ?? DEFAULT_TIMEOUT;
   const lifecycleCommand = (["start", "status", "stop", "version"] as Command[]).includes(command);
-  if (!lifecycleCommand) await ensureDaemon(pi, runtime, ctx, sessionId, signal, timeout, browserState.sharedCdpEndpoint);
+  if (!lifecycleCommand)
+    await ensureDaemon(pi, runtime, ctx, sessionId, signal, timeout, browserState.sharedCdpEndpoint);
 
   const args = buildCliArgs(inputParams, sessionId);
   if (command === "start" && browserState.sharedCdpEndpoint) {
     for (let index = args.length - 1; index >= 0; index--) {
-      if (args[index].startsWith("--isolated=") || args[index].startsWith("--userDataDir=") || args[index].startsWith("--user-data-dir=") || args[index].startsWith("--browserUrl=") || args[index].startsWith("--browser-url=") || args[index].startsWith("--wsEndpoint=") || args[index].startsWith("--ws-endpoint=")) args.splice(index, 1);
+      if (
+        args[index].startsWith("--isolated=") ||
+        args[index].startsWith("--userDataDir=") ||
+        args[index].startsWith("--user-data-dir=") ||
+        args[index].startsWith("--browserUrl=") ||
+        args[index].startsWith("--browser-url=") ||
+        args[index].startsWith("--wsEndpoint=") ||
+        args[index].startsWith("--ws-endpoint=")
+      )
+        args.splice(index, 1);
     }
     args.push(sharedEndpointFlag(browserState.sharedCdpEndpoint));
   }
@@ -567,77 +436,135 @@ async function executeCommand(
   if (command === "start") {
     if (!browserState.sharedCdpEndpoint) {
       const profile = join(workspace.devtoolsDir, "profile");
-      const profileIndex = args.findIndex(arg => arg.startsWith("--userDataDir="));
+      const profileIndex = args.findIndex((arg) => arg.startsWith("--userDataDir="));
       if (profileIndex >= 0) args[profileIndex] = `--userDataDir=${profile}`;
       else args.push(`--userDataDir=${profile}`);
     }
     for (let index = args.length - 1; index >= 0; index--) {
       if (args[index].startsWith("--isolated=")) args.splice(index, 1);
     }
-    if (!args.some(arg => arg === "--no-usage-statistics" || arg.startsWith("--usageStatistics="))) args.push("--no-usage-statistics");
-    if (args.some(arg => arg.startsWith("--logFile=") || arg.startsWith("--log-file="))) {
-      generatedArtifacts.push(await redirectOutputOption(args, ["logFile", "log-file"], runtime, ctx, "chrome_devtools", "chrome-devtools.log"));
+    if (!args.some((arg) => arg === "--no-usage-statistics" || arg.startsWith("--usageStatistics=")))
+      args.push("--no-usage-statistics");
+    if (args.some((arg) => arg.startsWith("--logFile=") || arg.startsWith("--log-file="))) {
+      generatedArtifacts.push(
+        await redirectOutputOption(
+          args,
+          ["logFile", "log-file"],
+          runtime,
+          ctx,
+          "chrome_devtools",
+          "chrome-devtools.log",
+        ),
+      );
     }
   }
   if (command === "lighthouse_audit") {
     const outputDirectory = await runtime.allocateDirectory(ctx, "chrome_devtools", "lighthouse-audit");
     for (let index = args.length - 1; index >= 0; index--) {
-      if (args[index].startsWith("--outputDirPath=") || args[index].startsWith("--output-dir-path=")) args.splice(index, 1);
+      if (args[index].startsWith("--outputDirPath=") || args[index].startsWith("--output-dir-path="))
+        args.splice(index, 1);
     }
     args.push(`--outputDirPath=${outputDirectory}`);
     generatedArtifacts.push(outputDirectory);
   }
-  if (args.some(arg => arg.startsWith("--filePath=") || arg.startsWith("--file-path="))) {
-    generatedArtifacts.push(await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "artifact.dat"));
+  if (args.some((arg) => arg.startsWith("--filePath=") || arg.startsWith("--file-path="))) {
+    generatedArtifacts.push(
+      await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "artifact.dat"),
+    );
   } else if (command === "take_screenshot") {
-    generatedArtifacts.push(await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "screenshot.png"));
+    generatedArtifacts.push(
+      await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "screenshot.png"),
+    );
   } else if (command === "performance_start_trace") {
-    generatedArtifacts.push(await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "trace.json.gz"));
+    generatedArtifacts.push(
+      await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "trace.json.gz"),
+    );
   } else if (command === "screencast_start") {
-    generatedArtifacts.push(await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "screencast.webm"));
+    generatedArtifacts.push(
+      await redirectOutputOption(args, ["filePath", "file-path"], runtime, ctx, "chrome_devtools", "screencast.webm"),
+    );
   }
   if (command === "take_heapsnapshot") {
-    const fileIndex = args.findIndex(arg => arg === "take_heapsnapshot") + 2;
+    const fileIndex = args.findIndex((arg) => arg === "take_heapsnapshot") + 2;
     const logical = safeName(args[fileIndex], "snapshot.heapsnapshot");
     generatedArtifacts.push(await runtime.allocateFile(ctx, "chrome_devtools", logical, "other"));
     args[fileIndex] = generatedArtifacts[generatedArtifacts.length - 1];
   }
   if (command === "get_network_request") {
-    if (args.some(arg => arg.startsWith("--requestFilePath="))) {
-      generatedArtifacts.push(await redirectOutputOption(args, ["requestFilePath"], runtime, ctx, "chrome_devtools", "request.network-request"));
+    if (args.some((arg) => arg.startsWith("--requestFilePath="))) {
+      generatedArtifacts.push(
+        await redirectOutputOption(
+          args,
+          ["requestFilePath"],
+          runtime,
+          ctx,
+          "chrome_devtools",
+          "request.network-request",
+        ),
+      );
     }
-    if (args.some(arg => arg.startsWith("--responseFilePath="))) {
-      generatedArtifacts.push(await redirectOutputOption(args, ["responseFilePath"], runtime, ctx, "chrome_devtools", "response.network-response"));
+    if (args.some((arg) => arg.startsWith("--responseFilePath="))) {
+      generatedArtifacts.push(
+        await redirectOutputOption(
+          args,
+          ["responseFilePath"],
+          runtime,
+          ctx,
+          "chrome_devtools",
+          "response.network-response",
+        ),
+      );
     }
   }
-  const cliCommand = redactSecrets(commandLabel(args));
-  if (command === "start" || command === "stop") await runtime.updateState(ctx, {chromeDevtoolsPid: null});
-  const result = await runtime.exec(pi, "chrome-devtools", args, ctx, {signal, timeout}).catch(async error => {
-    await runtime.updateState(ctx, {chromeDevtoolsPid: null});
+  const cliCommand = commandLabel("chrome-devtools", args);
+  if (command === "start" || command === "stop") await runtime.updateState(ctx, { chromeDevtoolsPid: null });
+  const result = await runtime.exec(pi, "chrome-devtools", args, ctx, { signal, timeout }).catch(async (error) => {
+    await runtime.updateState(ctx, { chromeDevtoolsPid: null });
     throw error; // Never replay a command: it may have already mutated the page.
   });
-  if (result.code !== 0 || result.killed) await runtime.updateState(ctx, {chromeDevtoolsPid: null});
-  else if (command === "status") await runtime.updateState(ctx, {chromeDevtoolsPid: daemonPid(result.stdout) ?? null});
+  if (result.code !== 0 || result.killed) await runtime.updateState(ctx, { chromeDevtoolsPid: null });
+  else if (command === "status")
+    await runtime.updateState(ctx, { chromeDevtoolsPid: daemonPid(result.stdout) ?? null });
 
   const stdout = redactSecrets(result.stdout.trim());
   const stderr = redactSecrets(result.stderr.trim());
   const combined = [stdout, stderr ? `stderr:\n${stderr}` : ""].filter(Boolean).join("\n\n");
-  const page = parsePageState(`${stdout}\n${stderr}`);
-  const output = await truncateOutput(runtime, ctx, combined || "(no output)", {correlationId, url: page.url, title: page.title});
-  const artifactPaths = [...resolveReportedPaths(workspace.root, extractArtifacts(`${stdout}\n${stderr}`)), ...generatedArtifacts];
-  const recorded = await runtime.record(ctx, "chrome_devtools", artifactPaths, command === "lighthouse_audit" ? "report" : "other", {
+  const page = parsePageState(`${stdout}\n${stderr}`, { bareUrl: true });
+  const output = await truncateOutput(runtime, ctx, combined || "(no output)", {
     correlationId,
     url: page.url,
     title: page.title,
   });
-  const artifacts = recorded.map(artifact => artifact.path);
+  const artifactPaths = [
+    ...resolveReportedPaths(
+      workspace.root,
+      extractArtifactPathsByExtension(`${stdout}\n${stderr}`, ARTIFACT_EXTENSIONS),
+    ),
+    ...generatedArtifacts,
+  ];
+  const recorded = await runtime.record(
+    ctx,
+    "chrome_devtools",
+    artifactPaths,
+    command === "lighthouse_audit" ? "report" : "other",
+    {
+      correlationId,
+      url: page.url,
+      title: page.title,
+    },
+  );
+  const artifacts = recorded.map((artifact) => artifact.path);
   if (output.fullOutputPath) artifacts.push(output.fullOutputPath);
   const artifactIds = await artifactIdsForPaths(runtime, ctx, artifacts);
-  const reportId = recorded.find(artifact => artifact.kind === "report")?.id;
+  const reportId = recorded.find((artifact) => artifact.kind === "report")?.id;
 
   const cliReportedError = reportsCliError(result.stdout.trim(), result.stderr.trim(), params.outputFormat);
   if (result.code !== 0 || result.killed || cliReportedError) {
-    const suffix = result.killed ? " (process terminated)" : cliReportedError ? " (CLI reported an error)" : ` (exit code ${result.code})`;
+    const suffix = result.killed
+      ? " (process terminated)"
+      : cliReportedError
+        ? " (CLI reported an error)"
+        : ` (exit code ${result.code})`;
     throw new Error(`${cliCommand}${suffix}\n\n${output.text}`);
   }
 
@@ -647,8 +574,8 @@ async function executeCommand(
   const text = sections.join("\n\n");
   await runtime.updateState(ctx, {
     lastBackend: "chrome_devtools",
-    ...(page.url ? {currentUrl: page.url} : {}),
-    ...(page.title ? {currentTitle: page.title} : {}),
+    ...(page.url ? { currentUrl: page.url } : {}),
+    ...(page.title ? { currentTitle: page.title } : {}),
   });
   return {
     text,
@@ -664,7 +591,7 @@ async function executeCommand(
       correlationId,
       command: params.command as Command,
       cliCommand,
-      args: args.map(redactSecrets),
+      args: args.map((arg) => redactSecrets(arg)),
       code: result.code,
       artifacts,
       fullOutputPath: output.fullOutputPath,
@@ -687,14 +614,17 @@ export function registerChromeDevtools(pi: ExtensionAPI, runtime: BrowserRuntime
       try {
         result = await executeCommand(pi, runtime, params, ctx, signal, toolCallId);
       } catch (error) {
-        const artifacts = await runtime.manifest(ctx).then(manifest => manifest.artifacts.filter(artifact => artifact.correlationId === toolCallId)).catch(() => []);
+        const artifacts = await runtime
+          .manifest(ctx)
+          .then((manifest) => manifest.artifacts.filter((artifact) => artifact.correlationId === toolCallId))
+          .catch(() => []);
         await runtime.recordEvidence(ctx, {
           backend: "chrome_devtools",
           operation: params.command,
           status: "failed",
           summary: error instanceof Error ? error.message : String(error),
-          artifactIds: artifacts.map(artifact => artifact.id),
-          reportId: artifacts.find(artifact => artifact.kind === "report")?.id,
+          artifactIds: artifacts.map((artifact) => artifact.id),
+          reportId: artifacts.find((artifact) => artifact.kind === "report")?.id,
           correlationId: toolCallId,
         });
         throw error;
@@ -709,10 +639,10 @@ export function registerChromeDevtools(pi: ExtensionAPI, runtime: BrowserRuntime
         artifactIds: result.details.artifactIds,
         reportId: result.details.reportId,
         correlationId: toolCallId,
-        data: {command: result.details.command},
+        data: { command: result.details.command },
       });
       return {
-        content: [{type: "text", text: result.text}],
+        content: [{ type: "text", text: result.text }],
         details: result.details,
       };
     },

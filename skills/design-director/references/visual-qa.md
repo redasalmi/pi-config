@@ -146,6 +146,7 @@ Use this format internally or in Review mode:
 
 ```markdown
 ### [High] Primary action disappears below the sticky footer
+
 - **Evidence:** `/checkout`, 360×800, validation-error state, keyboard focus on the first invalid field
 - **Impact:** The user cannot submit or recover without discovering an obscured scroll region.
 - **Correction:** Keep the action in normal flow at this width or reserve footer space and scroll the first error into view.

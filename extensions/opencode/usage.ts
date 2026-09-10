@@ -1,6 +1,17 @@
 import { createHash } from "node:crypto";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { isRecord, MIN_REFRESH_MS, PROVIDER, USAGE_URL, WINDOW_NAMES, type Issue, type Snapshot, type State, type UsageWindow, type WindowName } from "./types.ts";
+import {
+  isRecord,
+  MIN_REFRESH_MS,
+  PROVIDER,
+  USAGE_URL,
+  WINDOW_NAMES,
+  type Issue,
+  type Snapshot,
+  type State,
+  type UsageWindow,
+  type WindowName,
+} from "./types.ts";
 
 class UsageError extends Error {
   readonly issue: Issue;
@@ -19,10 +30,18 @@ export function parseUsage(value: unknown, observedAt = Date.now()): Snapshot {
   const windows = {} as Snapshot["windows"];
   for (const name of WINDOW_NAMES) {
     const window = value.usage[name];
-    if (!isRecord(window) || (window.status !== "ok" && window.status !== "rate-limited") ||
-      typeof window.percent !== "number" || !Number.isFinite(window.percent) || window.percent < 0 || window.percent > 100 ||
-      typeof window.resetsAt !== "string" || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(window.resetsAt) ||
-      !Number.isFinite(Date.parse(window.resetsAt))) throw new UsageError("invalid-response");
+    if (
+      !isRecord(window) ||
+      (window.status !== "ok" && window.status !== "rate-limited") ||
+      typeof window.percent !== "number" ||
+      !Number.isFinite(window.percent) ||
+      window.percent < 0 ||
+      window.percent > 100 ||
+      typeof window.resetsAt !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(window.resetsAt) ||
+      !Number.isFinite(Date.parse(window.resetsAt))
+    )
+      throw new UsageError("invalid-response");
     windows[name] = { status: window.status, usedPercent: window.percent, resetsAt: Date.parse(window.resetsAt) };
   }
   return { windows, observedAt };
@@ -38,9 +57,17 @@ export function retryAfter(value: string | null, now = Date.now()): number | und
 function officialEndpoint(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.origin === "https://opencode.ai" && !url.username && !url.password && !url.search && !url.hash &&
-      ["/zen/go", "/zen/go/", "/zen/go/v1", "/zen/go/v1/"].includes(url.pathname);
-  } catch { return false; }
+    return (
+      url.origin === "https://opencode.ai" &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      ["/zen/go", "/zen/go/", "/zen/go/v1", "/zen/go/v1/"].includes(url.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -50,14 +77,19 @@ async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
   });
-  try { return await Promise.race([promise, cancelled]); }
-  finally { signal.removeEventListener("abort", abort); }
+  try {
+    return await Promise.race([promise, cancelled]);
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
 }
 
 async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
   if (!response.body) throw new UsageError("invalid-response");
   const reader = response.body.getReader();
-  const cancel = () => { void reader.cancel().catch(() => {}); };
+  const cancel = () => {
+    void reader.cancel().catch(() => {});
+  };
   signal.addEventListener("abort", cancel, { once: true });
   const chunks: Uint8Array[] = [];
   let bytes = 0;
@@ -82,11 +114,14 @@ async function readJson(response: Response, signal: AbortSignal): Promise<unknow
   }
 }
 
-export function createUsage(state: State, deps: {
-  render(ctx: ExtensionContext): void;
-  observe(ctx: ExtensionContext, snapshot: Snapshot): void;
-  clearWarnings(): void;
-}) {
+export function createUsage(
+  state: State,
+  deps: {
+    render(ctx: ExtensionContext): void;
+    observe(ctx: ExtensionContext, snapshot: Snapshot): void;
+    clearWarnings(): void;
+  },
+) {
   let generation = 0;
   let credentialId: string | undefined;
   let controller: AbortController | undefined;
@@ -118,7 +153,10 @@ export function createUsage(state: State, deps: {
   function refresh(ctx: ExtensionContext, force = false): Promise<boolean> {
     if (inFlight) return inFlight;
     const now = Date.now();
-    if (!force && ((state.lastAttempt !== undefined && now - state.lastAttempt < MIN_REFRESH_MS) || (state.retryAt ?? 0) > now)) {
+    if (
+      !force &&
+      ((state.lastAttempt !== undefined && now - state.lastAttempt < MIN_REFRESH_MS) || (state.retryAt ?? 0) > now)
+    ) {
       return Promise.resolve(false);
     }
     const current = generation;
@@ -132,9 +170,14 @@ export function createUsage(state: State, deps: {
       try {
         signal.throwIfAborted();
         const provider = ctx.modelRegistry.getProvider(PROVIDER);
-        const models = ctx.model?.provider === PROVIDER ? [ctx.model] :
-          ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER);
-        if ((provider?.baseUrl && !officialEndpoint(provider.baseUrl)) || models.some((model) => !officialEndpoint(model.baseUrl))) {
+        const models =
+          ctx.model?.provider === PROVIDER
+            ? [ctx.model]
+            : ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER);
+        if (
+          (provider?.baseUrl && !officialEndpoint(provider.baseUrl)) ||
+          models.some((model) => !officialEndpoint(model.baseUrl))
+        ) {
           forgetAccount();
           throw new UsageError("endpoint");
         }
@@ -164,26 +207,46 @@ export function createUsage(state: State, deps: {
           credentialId = identity;
           deps.render(ctx);
         }
-        const response = await abortable(fetch(USAGE_URL, {
-          method: "GET", redirect: "error", cache: "no-store", signal,
-          headers: { Authorization: `Bearer ${key}`, Accept: "application/json", "User-Agent": "pi-opencode-extension/1.0" },
-        }).then((response) => {
-          if (signal.aborted) {
-            void response.body?.cancel().catch(() => {});
-            signal.throwIfAborted();
-          }
-          return response;
-        }), signal);
+        const response = await abortable(
+          fetch(USAGE_URL, {
+            method: "GET",
+            redirect: "error",
+            cache: "no-store",
+            signal,
+            headers: {
+              Authorization: `Bearer ${key}`,
+              Accept: "application/json",
+              "User-Agent": "pi-opencode-extension/1.0",
+            },
+          }).then((response) => {
+            if (signal.aborted) {
+              void response.body?.cancel().catch(() => {});
+              signal.throwIfAborted();
+            }
+            return response;
+          }),
+          signal,
+        );
         if (signal.aborted) {
           void response.body?.cancel().catch(() => {});
           signal.throwIfAborted();
         }
         if (!response.ok) {
           void response.body?.cancel().catch(() => {});
-          const issue: Issue = response.status === 401 ? "auth" : response.status === 403 ? "entitlement" :
-            response.status === 429 ? "rate-limit" : "server";
+          const issue: Issue =
+            response.status === 401
+              ? "auth"
+              : response.status === 403
+                ? "entitlement"
+                : response.status === 429
+                  ? "rate-limit"
+                  : "server";
           if (response.status === 401 || response.status === 403) forgetAccount();
-          throw new UsageError(issue, response.status, response.status === 429 ? retryAfter(response.headers.get("retry-after")) : undefined);
+          throw new UsageError(
+            issue,
+            response.status,
+            response.status === 429 ? retryAfter(response.headers.get("retry-after")) : undefined,
+          );
         }
         const snapshot = parseUsage(await abortable(readJson(response, signal), signal));
         signal.throwIfAborted();

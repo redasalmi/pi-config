@@ -7,14 +7,14 @@ Codex's optional integration.
 
 ## Commands
 
-| Command | Behavior |
-| --- | --- |
-| `/preset NAME` | Apply a preset and remember it as the startup default. |
-| `/preset` | Choose a session preset. Ctrl+Shift+U cycles presets and none. |
-| `/preset none` | Restore the saved pre-preset configuration, clear the selection, and disable the startup default. |
-| `/preset default NAME` / `/preset default none` | Save/clear the startup default without changing this session. |
-| `/preset status` | Show configuration sources, current values, and baseline availability. |
-| `pi --preset NAME` / `pi --preset none` | Override selection at process startup, not on reload. |
+| Command                                         | Behavior                                                                                          |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `/preset NAME`                                  | Apply a preset and remember it as the startup default.                                            |
+| `/preset`                                       | Choose a session preset. Ctrl+Shift+U cycles presets and none.                                    |
+| `/preset none`                                  | Restore the saved pre-preset configuration, clear the selection, and disable the startup default. |
+| `/preset default NAME` / `/preset default none` | Save/clear the startup default without changing this session.                                     |
+| `/preset status`                                | Show configuration sources, current values, and baseline availability.                            |
+| `pi --preset NAME` / `pi --preset none`         | Override selection at process startup, not on reload.                                             |
 
 Dialogs and notifications work in TUI and compatible RPC clients. Named flags
 also work in print/JSON mode; informational output does not pollute protocol stdout.

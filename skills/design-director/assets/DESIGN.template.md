@@ -57,18 +57,18 @@
 
 ## Style fingerprint
 
-| Axis | Decision |
-|---|---|
-| Concept or tension | |
-| Typography | |
-| Palette and contrast | |
-| Density and rhythm | |
-| Grid and composition | |
-| Geometry and borders | |
-| Surfaces and depth | |
-| Imagery, icons, and data | |
-| Content voice | |
-| Motion | |
+| Axis                     | Decision |
+| ------------------------ | -------- |
+| Concept or tension       |          |
+| Typography               |          |
+| Palette and contrast     |          |
+| Density and rhythm       |          |
+| Grid and composition     |          |
+| Geometry and borders     |          |
+| Surfaces and depth       |          |
+| Imagery, icons, and data |          |
+| Content voice            |          |
+| Motion                   |          |
 
 ## System foundations
 
@@ -137,13 +137,13 @@ Document only durable roles and relationships. Use primitive, semantic, and comp
 
 ## Responsive and state rules
 
-| Context | Composition and priority | State or content risk | Intended behavior |
-|---|---|---|---|
-| Narrowest supported view / minimum window | | | |
-| Default view | | | |
-| Large or wide view | | | |
-| Dense or long content | | | |
-| Empty, error, or permission state | | | |
+| Context                                   | Composition and priority | State or content risk | Intended behavior |
+| ----------------------------------------- | ------------------------ | --------------------- | ----------------- |
+| Narrowest supported view / minimum window |                          |                       |                   |
+| Default view                              |                          |                       |                   |
+| Large or wide view                        |                          |                       |                   |
+| Dense or long content                     |                          |                       |                   |
+| Empty, error, or permission state         |                          |                       |                   |
 
 ## Do / avoid
 
@@ -158,8 +158,8 @@ Document only durable roles and relationships. Use primitive, semantic, and comp
 ## Visual QA matrix
 
 | Route or screen | State/content | Viewport or window | Theme/locale/input/platform | Comparison source | Required checks |
-|---|---|---|---|---|---|
-| | | | | | |
+| --------------- | ------------- | ------------------ | --------------------------- | ----------------- | --------------- |
+|                 |               |                    |                             |                   |                 |
 
 ## Acceptance criteria
 
@@ -170,5 +170,5 @@ Document only durable roles and relationships. Use primitive, semantic, and comp
 Record only non-obvious decisions, rejected alternatives, meaningful deviations, and tradeoffs that future work should preserve or revisit.
 
 | Date | Decision | Evidence and rationale | Tradeoff or revisit trigger |
-|---|---|---|---|
-| | | | |
+| ---- | -------- | ---------------------- | --------------------------- |
+|      |          |                        |                             |

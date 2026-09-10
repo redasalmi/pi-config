@@ -286,6 +286,7 @@ Report concisely:
 
 ```markdown
 ## Music library result
+
 - **Status:** Planned / Verified / Complete / Partial / No changes
 - **Root:** `/absolute/path`
 - **Mode and scope:** [mode, requested change set, included subtree/files]

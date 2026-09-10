@@ -16,14 +16,6 @@ export const ROUTING_GUIDANCE = [
   "Use browser to prepare a backend or hand off a URL/artifact; do not run all three backends for a generic browser request.",
 ];
 
-export function backendForTask(task: string): BrowserBackend | undefined {
-  const value = task.toLowerCase();
-  if (/lighthouse|core web vital|cwv|seo score|performance audit|threshold|regression report/.test(value)) return "lighthouse";
-  if (/console|network|runtime|dom inspection|heap|memory|devtools|trace|lcp breakdown/.test(value)) return "chrome_devtools";
-  if (/click|fill|form|workflow|automation|snapshot|locator|upload|browser interaction|end-to-end/.test(value)) return "playwright";
-  return undefined;
-}
-
 export function activateBackend(pi: ExtensionAPI, backend: BrowserBackend): string[] {
   const active = pi.getActiveTools();
   const tool = BACKEND_TOOLS[backend];
@@ -38,7 +30,11 @@ export function resolveReportedPath(root: string, value: string): string | undef
 }
 
 export function resolveReportedPaths(root: string, values: string[]): string[] {
-  return [...new Set(values.map(value => resolveReportedPath(root, value)).filter((value): value is string => value !== undefined))];
+  return [
+    ...new Set(
+      values.map((value) => resolveReportedPath(root, value)).filter((value): value is string => value !== undefined),
+    ),
+  ];
 }
 
 /** Redirect an upstream CLI's output option to an allocated Browser path. */
@@ -51,7 +47,7 @@ export async function redirectOutputOption(
   defaultName: string,
 ): Promise<string> {
   const indices = args.reduce<number[]>((matches, arg, index) => {
-    if (optionNames.some(name => arg.startsWith(`--${name}=`))) matches.push(index);
+    if (optionNames.some((name) => arg.startsWith(`--${name}=`))) matches.push(index);
     return matches;
   }, []);
   if (indices.length > 1) throw new Error(`Only one ${optionNames[0]} output path may be provided.`);
@@ -70,5 +66,5 @@ export async function redirectOutputOption(
 }
 
 export function commandHasOption(args: string[], names: string[]): boolean {
-  return args.some(arg => names.some(name => arg === `--${name}` || arg.startsWith(`--${name}=`)));
+  return args.some((arg) => names.some((name) => arg === `--${name}` || arg.startsWith(`--${name}=`)));
 }

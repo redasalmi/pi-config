@@ -20,7 +20,7 @@ export async function runCli(
   signal?: AbortSignal,
   timeout = 120_000,
 ): Promise<BrowserProcessResult> {
-  const result = await runtime.exec(pi, command, args, ctx, {signal, timeout});
+  const result = await runtime.exec(pi, command, args, ctx, { signal, timeout });
   if (result.code !== 0 || result.killed) {
     const output = redactSecrets(`${result.stdout}\n${result.stderr}`.trim()) || "(no output)";
     const suffix = result.killed ? " (process terminated)" : ` (exit code ${result.code})`;

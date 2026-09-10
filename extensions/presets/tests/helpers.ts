@@ -12,7 +12,11 @@ export function harness(withCodex = true) {
     codexState: base.state,
     state: createPresetsState(),
     tiers,
-    get entries() { return base.entries; },
-    set entries(value) { base.entries = value; },
+    get entries() {
+      return base.entries;
+    },
+    set entries(value) {
+      base.entries = value;
+    },
   };
 }

@@ -7,16 +7,16 @@ This extension is not built by or affiliated with the OpenCode team.
 
 ## Commands
 
-| Command | Behavior |
-| --- | --- |
-| `/opencode` / `/opencode status` | Refresh subscription limits and show connection/configuration diagnostics. |
-| `/opencode usage` | Refresh all three subscription windows, remaining/used percentages, reset times, and the most constrained or exhausted windows. |
-| `/opencode warnings on\|off` | Enable/disable quota warnings globally. With no argument, show the setting. |
-| `/opencode stats` | Show local Go assistant tokens, cache usage, and recorded estimated costs on the current session branch. No account request. |
-| `/opencode console` | Display the official console sign-in link. Does not open a browser or change billing settings. |
-| `/opencode statusline` | Show footer configuration and available fields. |
-| `/opencode statusline set\|add\|remove FIELDS` | Configure ordered, comma-separated footer fields globally. An empty `set` hides the footer. |
-| `/opencode statusline reset` | Restore the compact quota-only footer. |
+| Command                                        | Behavior                                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `/opencode` / `/opencode status`               | Refresh subscription limits and show connection/configuration diagnostics.                                                      |
+| `/opencode usage`                              | Refresh all three subscription windows, remaining/used percentages, reset times, and the most constrained or exhausted windows. |
+| `/opencode warnings on\|off`                   | Enable/disable quota warnings globally. With no argument, show the setting.                                                     |
+| `/opencode stats`                              | Show local Go assistant tokens, cache usage, and recorded estimated costs on the current session branch. No account request.    |
+| `/opencode console`                            | Display the official console sign-in link. Does not open a browser or change billing settings.                                  |
+| `/opencode statusline`                         | Show footer configuration and available fields.                                                                                 |
+| `/opencode statusline set\|add\|remove FIELDS` | Configure ordered, comma-separated footer fields globally. An empty `set` hides the footer.                                     |
+| `/opencode statusline reset`                   | Restore the compact quota-only footer.                                                                                          |
 
 Use Pi's existing model selection commands for models and `/login` for OpenCode
 Go authentication. Pi can also resolve `OPENCODE_API_KEY`. Pi 0.85.1 includes native

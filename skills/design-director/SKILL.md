@@ -206,6 +206,7 @@ Every finding must identify an actual visible or behavioral symptom and include:
 
 ```markdown
 ### [High] Specific, outcome-focused title
+
 - **Evidence:** route/screen, viewport or window, theme/input, and state
 - **Impact:** who is affected and what becomes harder, ambiguous, or impossible
 - **Correction:** smallest direction that addresses the root cause
@@ -241,6 +242,7 @@ Lead with findings ordered Blocker, High, Medium, then Polish. Add an optional `
 
 ```markdown
 ## Review summary
+
 - **Verdict:** Needs revision / Acceptable with refinements / No material findings / Review incomplete
 - **Evidence inspected:** rendered screens or supplied references
 - **Coverage:** screens, states, sizes, themes, platforms, and inputs actually inspected

@@ -19,20 +19,20 @@ Choose a useful tension such as “precise but humane,” “dense but calm,” 
 
 Define concrete choices rather than a trend label:
 
-| Axis | Decision |
-|---|---|
-| Concept | Product-specific idea, tension, or metaphor |
-| Typography | Productive/expressive balance, families, contrast, hierarchy, numeral/script needs |
-| Palette | Temperature, saturation, semantic roles, and where contrast peaks |
-| Density | Compact, balanced, or spacious; where and why density changes |
-| Composition | Symmetric/asymmetric, modular/editorial, fixed/fluid, dominant alignment |
-| Geometry | Sharp/soft, radius and border logic, shape vocabulary |
-| Material | Flat, ruled, layered, tactile, luminous, image-led |
-| Imagery/data | Photography, illustration, diagrams, charts, texture, or none |
-| Content voice | Direct, technical, reassuring, editorial, playful, or another product-fit tone |
-| Motion | Nearly static, crisp, elastic, cinematic, or system-native |
-| Signature | One or two repeatable devices tied to the product |
-| Tradeoff | What this direction intentionally does less well |
+| Axis          | Decision                                                                           |
+| ------------- | ---------------------------------------------------------------------------------- |
+| Concept       | Product-specific idea, tension, or metaphor                                        |
+| Typography    | Productive/expressive balance, families, contrast, hierarchy, numeral/script needs |
+| Palette       | Temperature, saturation, semantic roles, and where contrast peaks                  |
+| Density       | Compact, balanced, or spacious; where and why density changes                      |
+| Composition   | Symmetric/asymmetric, modular/editorial, fixed/fluid, dominant alignment           |
+| Geometry      | Sharp/soft, radius and border logic, shape vocabulary                              |
+| Material      | Flat, ruled, layered, tactile, luminous, image-led                                 |
+| Imagery/data  | Photography, illustration, diagrams, charts, texture, or none                      |
+| Content voice | Direct, technical, reassuring, editorial, playful, or another product-fit tone     |
+| Motion        | Nearly static, crisp, elastic, cinematic, or system-native                         |
+| Signature     | One or two repeatable devices tied to the product                                  |
+| Tradeoff      | What this direction intentionally does less well                                   |
 
 A signature move might be a product-specific data strip, annotation system, split-pane rhythm, illustration grammar, comparison device, or content transition. A gradient, glow, large heading, or unusual font is not a concept by itself.
 

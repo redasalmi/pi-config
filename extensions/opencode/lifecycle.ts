@@ -3,10 +3,17 @@ import { defaultSettings, notify, PROVIDER, STATUS_KEY, type State } from "./typ
 import { readSettings } from "./storage.ts";
 import type { createUsage } from "./usage.ts";
 
-export function registerLifecycle(pi: ExtensionAPI, state: State, usage: ReturnType<typeof createUsage>, render: (ctx: ExtensionContext) => void) {
+export function registerLifecycle(
+  pi: ExtensionAPI,
+  state: State,
+  usage: ReturnType<typeof createUsage>,
+  render: (ctx: ExtensionContext) => void,
+) {
   let timer: ReturnType<typeof setInterval> | undefined;
   let started = false;
-  const wantsAccount = () => state.settings.warnings || state.settings.statusline.some((field) => ["usage", "resets", "freshness"].includes(field));
+  const wantsAccount = () =>
+    state.settings.warnings ||
+    state.settings.statusline.some((field) => ["usage", "resets", "freshness"].includes(field));
 
   function schedule(ctx: ExtensionContext, force = false): void {
     if (started && ctx.hasUI && ctx.model?.provider === PROVIDER && wantsAccount()) void usage.refresh(ctx, force);
@@ -31,10 +38,15 @@ export function registerLifecycle(pi: ExtensionAPI, state: State, usage: ReturnT
   pi.on("session_start", (_event, ctx) => {
     started = true;
     usage.reset();
-    try { state.settings = readSettings(); }
-    catch {
+    try {
+      state.settings = readSettings();
+    } catch {
       state.settings = defaultSettings();
-      notify(ctx, "Could not load opencode.json; using default Go footer and warnings. Fix the file before saving settings.", "warning");
+      notify(
+        ctx,
+        "Could not load opencode.json; using default Go footer and warnings. Fix the file before saving settings.",
+        "warning",
+      );
     }
     configure(ctx);
   });
@@ -46,16 +58,28 @@ export function registerLifecycle(pi: ExtensionAPI, state: State, usage: ReturnT
     if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
   });
   pi.on("model_select", (event, ctx) => {
-    if (ctx.model?.provider !== PROVIDER || event.previousModel?.provider !== PROVIDER ||
-      event.previousModel.baseUrl !== ctx.model.baseUrl) {
+    if (
+      ctx.model?.provider !== PROVIDER ||
+      event.previousModel?.provider !== PROVIDER ||
+      event.previousModel.baseUrl !== ctx.model.baseUrl
+    ) {
       // Model navigation does not reset the Go account's backoff or warning history.
       usage.cancel();
     }
     configure(ctx);
   });
-  pi.on("agent_settled", (_event, ctx) => { render(ctx); schedule(ctx); });
-  pi.on("session_tree", (_event, ctx) => { render(ctx); });
-  pi.on("session_compact", (_event, ctx) => { render(ctx); });
-  pi.on("thinking_level_select", (_event, ctx) => { render(ctx); });
+  pi.on("agent_settled", (_event, ctx) => {
+    render(ctx);
+    schedule(ctx);
+  });
+  pi.on("session_tree", (_event, ctx) => {
+    render(ctx);
+  });
+  pi.on("session_compact", (_event, ctx) => {
+    render(ctx);
+  });
+  pi.on("thinking_level_select", (_event, ctx) => {
+    render(ctx);
+  });
   return { settingsChanged: configure };
 }

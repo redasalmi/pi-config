@@ -21,7 +21,7 @@ Browser-managed output is stored outside repositories at:
 ~/.pi/artifacts/browser/<project>/<pi-session-id>/<runtime-id>/
 ```
 
-Only the current runtime directory is listed, reported, closed, or cleared. Historical runtime directories are not restored or managed. The current workspace contains backend output directories, a sanitized artifact manifest, normalized in-memory evidence, and generated reports. Chrome DevTools uses a short-lived owner-only `/tmp/pi-browser-*` IPC directory because of its Unix socket path limit; this is not artifact storage.
+Only the current runtime directory is listed, reported, closed, or cleared. Historical runtime directories are not restored or managed. The current workspace contains backend output directories, a sanitized artifact manifest, normalized in-memory evidence, and generated reports. Chrome DevTools uses a short-lived owner-only `pi-browser-*` IPC directory under the resolved system temp root (for example `/tmp` on Linux or `/private/tmp` on macOS) because of its Unix socket path limit; this is not artifact storage.
 
 Output paths are allocated centrally, checked for containment and symlink escapes, and recursively recorded for directory-producing commands. Artifact records include size, sanitized URL/title metadata, report IDs, and correlation IDs. SHA-256 is recorded for artifacts up to 64 MiB and omitted for larger files so heap snapshots, traces, and videos do not block tool completion on a second full-file read. Upstream package and browser caches are not Browser-managed.
 
@@ -54,12 +54,12 @@ URLs are sanitized before they enter tool output, manifests, evidence, or report
 Reuse snapshots returned by Playwright actions instead of requesting duplicates. For large pages use `find`, `snapshot` with `target`, or `depth`. Batch known actions and observable checks with the existing `run_code` action, for example:
 
 ```js
-async page => {
-  await page.getByRole('textbox', {name: 'Search'}).fill('browser');
-  await page.getByRole('button', {name: 'Search', exact: true}).click();
-  await page.getByRole('heading', {name: 'Search results', exact: true}).waitFor();
-  return {resultsVisible: true};
-}
+async (page) => {
+  await page.getByRole("textbox", { name: "Search" }).fill("browser");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("heading", { name: "Search results", exact: true }).waitFor();
+  return { resultsVisible: true };
+};
 ```
 
 Use stable locators inside a batch and let failed checks throw. Avoid fixed sleeps, blanket network-idle waits, and retries that could duplicate a mutation. Reuse browser processes but isolate independent tests with fresh contexts/fixture state. Keep Lighthouse performance runs sequential; narrow categories and use one run while iterating, then repeated measurements for final conclusions.

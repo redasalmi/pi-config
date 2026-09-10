@@ -30,10 +30,14 @@ beforeEach(async () => {
     return true;
   });
   // Sync the built-in's named ESM export used by the extension; never run PowerShell.
-  mock.method(childProcess, "execFile", (file: string, args: readonly string[], options: ExecFileOptions, callback: ExecCall["callback"]) => {
-    execCalls.push({ file, args, options, callback });
-    return new childProcess.ChildProcess();
-  });
+  mock.method(
+    childProcess,
+    "execFile",
+    (file: string, args: readonly string[], options: ExecFileOptions, callback: ExecCall["callback"]) => {
+      execCalls.push({ file, args, options, callback });
+      return new childProcess.ChildProcess();
+    },
+  );
   syncBuiltinESMExports();
 });
 afterEach(async () => {
@@ -48,16 +52,27 @@ function harness() {
   const notices: Array<{ message: string; type?: string }> = [];
   const state = { name: undefined as string | undefined, idle: true };
   const ctx = {
-    cwd: join(directory, "project"), mode: "tui", hasUI: true,
+    cwd: join(directory, "project"),
+    mode: "tui",
+    hasUI: true,
     isIdle: () => state.idle,
-    ui: { notify(message: string, type?: string) { notices.push({ message, type }); } },
+    ui: {
+      notify(message: string, type?: string) {
+        notices.push({ message, type });
+      },
+    },
   } as ExtensionContext;
   notify({
-    on(event: string, handler: Handler) { handlers.set(event, [...(handlers.get(event) ?? []), handler]); },
+    on(event: string, handler: Handler) {
+      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+    },
     getSessionName: () => state.name,
   } as ExtensionAPI);
   return {
-    ctx, state, notices, handlers,
+    ctx,
+    state,
+    notices,
+    handlers,
     async emit(event: ExtensionEvent["type"], data: Record<string, unknown> = {}) {
       for (const handler of handlers.get(event) ?? []) await handler({ type: event, ...data }, ctx);
     },
@@ -137,7 +152,10 @@ test("Kitty takes precedence over iTerm and shares a unique id across two ST-ter
   await h.emit("ui_prompt_start");
   assert.equal(output.length, 4);
   const ids: string[] = [];
-  for (const [offset, body] of [[0, "Ready for input"], [2, "Waiting for your input"]] as const) {
+  for (const [offset, body] of [
+    [0, "Ready for input"],
+    [2, "Waiting for your input"],
+  ] as const) {
     const title = /^\x1b\]99;i=([0-9a-f-]+):d=0;Pi — project\x1b\\$/.exec(output[offset]);
     assert.ok(title);
     assert.match(title[1], /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -160,13 +178,19 @@ test("labels follow the current session name and fall back to a sanitized projec
   await h.emit("agent_settled");
   Object.assign(h.ctx, { cwd: "/" });
   await h.emit("agent_settled");
-  assert.deepEqual(output, [osc777("First"), osc777("Renamed"), osc777("project name"), "\x1b]777;notify;Pi;Ready for input\x07"]);
+  assert.deepEqual(output, [
+    osc777("First"),
+    osc777("Renamed"),
+    osc777("project name"),
+    "\x1b]777;notify;Pi;Ready for input\x07",
+  ]);
 });
 
 test("labels remove OSC delimiters, C0/C1 controls, and repeated whitespace", async () => {
   const h = harness();
-  const controls = Array.from({ length: 32 }, (_, index) => String.fromCharCode(index)).join("")
-    + Array.from({ length: 33 }, (_, index) => String.fromCharCode(127 + index)).join("");
+  const controls =
+    Array.from({ length: 32 }, (_, index) => String.fromCharCode(index)).join("") +
+    Array.from({ length: 33 }, (_, index) => String.fromCharCode(127 + index)).join("");
   h.state.name = `  before;${controls}\u2028\t after  `;
   await h.emit("session_start");
   await h.emit("agent_settled");
@@ -209,7 +233,17 @@ test("notifyPrompts=false disables only prompts; settings reload on the next ses
   assert.deepEqual(h.notices, []);
 });
 
-for (const text of ["{", "null", "[]", "false", '"string"', "123", '{"notifyPrompts":"false"}', '{"notifyPrompts":null}', '{"notifyPrompts":0}']) {
+for (const text of [
+  "{",
+  "null",
+  "[]",
+  "false",
+  '"string"',
+  "123",
+  '{"notifyPrompts":"false"}',
+  '{"notifyPrompts":null}',
+  '{"notifyPrompts":0}',
+]) {
   test(`invalid settings warn and default to enabling prompts: ${text}`, async () => {
     await writeFile(join(directory, "notify.json"), text);
     const h = harness();
@@ -278,7 +312,11 @@ test("Windows takes precedence, safely quotes XML text, and bounds the PowerShel
   assert.ok(script.includes("::ToastText02"));
   assert.ok(script.includes("$text[0].AppendChild($xml.CreateTextNode('Pi — O''Brien $(expression) <&>'))"));
   assert.ok(script.includes("$text[1].AppendChild($xml.CreateTextNode('Ready for input'))"));
-  assert.ok(script.includes("::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show("));
+  assert.ok(
+    script.includes(
+      "::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show(",
+    ),
+  );
   assert.ok(call.options.signal instanceof AbortSignal);
   assert.equal(call.options.signal.aborted, false);
   assert.deepEqual(call.options, { timeout: 5000, windowsHide: true, signal: call.options.signal });

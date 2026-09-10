@@ -182,12 +182,19 @@ Useful headings for substantial prompts include:
 
 ```markdown
 ## Goal
+
 ## Context and inputs
+
 ## Requirements
+
 ## Constraints and non-goals
+
 ## Evidence and tools
+
 ## Permissions and stop conditions
+
 ## Validation
+
 ## Output
 ```
 
@@ -245,12 +252,15 @@ Default output:
 ```
 
 ## Integration notes
+
 - Only non-prompt role, schema, tool, or runtime configuration needed to use it correctly.
 
 ## Key improvements
+
 - Up to three material behavior changes.
 
 ## Assumptions or open decisions
+
 - Only items that the user may need to confirm.
 ````
 
@@ -266,13 +276,16 @@ Use:
 ## Prompt critique
 
 ### [High | Medium | Low] Specific issue
+
 - **Impact:** How it changes or destabilizes model behavior.
 - **Correction:** The smallest useful fix.
 
 ## Recommended structure
+
 - Only when reorganization is materially needed.
 
 ## Open decisions
+
 - Only unresolved choices that materially change the prompt.
 ```
 

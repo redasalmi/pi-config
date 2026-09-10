@@ -1,11 +1,27 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { defaultSettings, isStale, PROVIDER, resetText, STATUS_KEY, STATUSLINE_ITEMS, WINDOW_LABELS, WINDOW_NAMES, type State, type StatuslineItem } from "./types.ts";
+import {
+  defaultSettings,
+  isStale,
+  PROVIDER,
+  resetText,
+  STATUS_KEY,
+  STATUSLINE_ITEMS,
+  WINDOW_LABELS,
+  WINDOW_NAMES,
+  type State,
+  type StatuslineItem,
+} from "./types.ts";
 
 export function parseStatusline(args: string, current: StatuslineItem[]): StatuslineItem[] {
   const [operation, ...rest] = args.trim().split(/\s+/);
   if (operation === "reset" && rest.length === 0) return defaultSettings().statusline;
-  if (!["set", "add", "remove"].includes(operation)) throw new Error("Use /opencode statusline set|add|remove FIELDS or reset.");
-  const values = rest.join(" ").split(",").map((item) => item.trim()).filter(Boolean);
+  if (!["set", "add", "remove"].includes(operation))
+    throw new Error("Use /opencode statusline set|add|remove FIELDS or reset.");
+  const values = rest
+    .join(" ")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
   if (values.some((item) => !STATUSLINE_ITEMS.includes(item as StatuslineItem))) {
     throw new Error(`Unknown footer field. Available: ${STATUSLINE_ITEMS.join(", ")}.`);
   }
@@ -36,19 +52,39 @@ export function createStatusline(state: State, thinking: () => string) {
       }
       if (field === "usage" || field === "resets" || field === "freshness") showsAccount = true;
       if (field === "usage") {
-        if (!snapshot) parts.push(state.refreshing ? "quota loading" : state.issue ? "quota unavailable" : "quota unknown");
-        else for (const name of WINDOW_NAMES) {
-          const window = snapshot.windows[name];
-          const left = 100 - window.usedPercent;
-          const color = stale ? "warning" : window.status === "rate-limited" || left <= 10 ? "error" : left <= 30 ? "warning" : "success";
-          parts.push(ctx.ui.theme.fg(color, `${WINDOW_LABELS[name]} ${left}% left${window.status === "rate-limited" ? " (limited)" : ""}`));
-        }
+        if (!snapshot)
+          parts.push(state.refreshing ? "quota loading" : state.issue ? "quota unavailable" : "quota unknown");
+        else
+          for (const name of WINDOW_NAMES) {
+            const window = snapshot.windows[name];
+            const left = 100 - window.usedPercent;
+            const color = stale
+              ? "warning"
+              : window.status === "rate-limited" || left <= 10
+                ? "error"
+                : left <= 30
+                  ? "warning"
+                  : "success";
+            parts.push(
+              ctx.ui.theme.fg(
+                color,
+                `${WINDOW_LABELS[name]} ${left}% left${window.status === "rate-limited" ? " (limited)" : ""}`,
+              ),
+            );
+          }
       }
       if (field === "resets") {
         if (!snapshot) parts.push("resets unknown");
-        else for (const name of WINDOW_NAMES) parts.push(`${WINDOW_LABELS[name]} ${resetText(snapshot.windows[name].resetsAt)}`);
+        else
+          for (const name of WINDOW_NAMES)
+            parts.push(`${WINDOW_LABELS[name]} ${resetText(snapshot.windows[name].resetsAt)}`);
       }
-      if (field === "freshness") parts.push(snapshot ? `updated ${Math.max(0, Math.floor((Date.now() - snapshot.observedAt) / 60_000))}m ago` : "not refreshed");
+      if (field === "freshness")
+        parts.push(
+          snapshot
+            ? `updated ${Math.max(0, Math.floor((Date.now() - snapshot.observedAt) / 60_000))}m ago`
+            : "not refreshed",
+        );
     }
     if (showsAccount && stale) parts.push(ctx.ui.theme.fg("warning", "stale · /opencode usage"));
     else if (showsAccount && state.issue) parts.push(ctx.ui.theme.fg("warning", "refresh failed · /opencode status"));

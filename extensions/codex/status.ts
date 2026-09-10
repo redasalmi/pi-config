@@ -4,7 +4,11 @@ import type { createUsage } from "./usage.ts";
 import { findServiceTier } from "./service-tiers.ts";
 import { formatTokens, getStat, itemLabel, notify } from "./utils.ts";
 
-export function registerStatusCommand(pi: ExtensionAPI, state: CodexState, usage: ReturnType<typeof createUsage>): void {
+export function registerStatusCommand(
+  pi: ExtensionAPI,
+  state: CodexState,
+  usage: ReturnType<typeof createUsage>,
+): void {
   function text(ctx: ExtensionContext): string {
     const context = ctx.getContextUsage();
     const tier = findServiceTier(ctx.model, state.selectedServiceTier);
@@ -18,14 +22,20 @@ export function registerStatusCommand(pi: ExtensionAPI, state: CodexState, usage
       itemLabel(ctx, "Tools", pi.getActiveTools().join(", ") || "none"),
       itemLabel(ctx, "Plan", state.plan.mode),
       usage.limitsText(ctx),
-      ctx.ui.theme.fg("dim", "Use /preset status for configuration sources; /usage cumulative for account token activity."),
+      ctx.ui.theme.fg(
+        "dim",
+        "Use /preset status for configuration sources; /usage cumulative for account token activity.",
+      ),
     ].join("\n");
   }
 
   pi.registerCommand("status", {
     description: "Show local Codex status immediately; refresh Git and limits in parallel",
     handler: async (args, ctx) => {
-      if (args.trim() && args.trim() !== "tokens") { notify(ctx, "Usage: /status [tokens]", "error"); return; }
+      if (args.trim() && args.trim() !== "tokens") {
+        notify(ctx, "Usage: /status [tokens]", "error");
+        return;
+      }
       const signal = usage.lifetimeSignal();
       notify(ctx, `${text(ctx)}\n${ctx.ui.theme.fg("dim", "Refreshing…")}`);
       const jobs: Promise<unknown>[] = [usage.refresh(ctx, true), usage.loadGitBranch(ctx, true)];

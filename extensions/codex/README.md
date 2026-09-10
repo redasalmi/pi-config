@@ -7,29 +7,29 @@ or additional dependency is required.
 
 ## Commands
 
-| Command | Behavior |
-| --- | --- |
-| `/tier NAME` / `/tier off` | Set/clear the session's model-advertised service tier. |
-| `/tier save NAME` / `/tier save off` | Save/clear the startup tier without changing this session. |
-| `/tier` | Refresh tier metadata and list the active model's supported tiers. |
-| `/status` | Show local/cached information immediately, then refresh limits and Git concurrently. |
-| `/status tokens` | Also load account token activity, cached for five minutes. |
-| `/usage limits` | Refresh and show detailed account limits, reset times, and saved reset count. |
-| `/usage daily\|weekly\|cumulative` | Show account-wide token activity, not just this Pi session. |
-| `/usage reset` | Choose and explicitly confirm consumption of a saved usage reset. |
-| `/usage warnings on\|off` | Enable/disable quota warnings globally. |
-| `/statusline set\|add\|remove ITEMS` | Configure ordered, comma-separated footer fields. |
-| `/statusline reset` | Use the compact preset/tier/quota/credits footer. |
-| `/plan on` / `/plan PROMPT` | Enter planning mode, optionally starting a planning request. |
-| `/plan status` | Show the full checklist and planning state. |
-| `/plan execute` | Confirm the proposed checklist and start implementation. |
-| `/plan off` | Leave planning without starting a task; retain the checklist. |
-| `/plan track` | Enable checklist tracking for ordinary work without starting a task. |
-| `/plan clear` | Disable planning/tracking and clear the checklist. |
-| `/diff [all\|staged\|unstaged\|untracked]` | Inspect local changes without an LLM request. |
-| `/review base=REF [head=REF]` | Pin local commits and invoke the existing `code-review` skill. |
-| `/review working` | Start a separately scoped, read-only working-tree review. |
-| `/review` | Choose a review scope interactively. |
+| Command                                    | Behavior                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `/tier NAME` / `/tier off`                 | Set/clear the session's model-advertised service tier.                               |
+| `/tier save NAME` / `/tier save off`       | Save/clear the startup tier without changing this session.                           |
+| `/tier`                                    | Refresh tier metadata and list the active model's supported tiers.                   |
+| `/status`                                  | Show local/cached information immediately, then refresh limits and Git concurrently. |
+| `/status tokens`                           | Also load account token activity, cached for five minutes.                           |
+| `/usage limits`                            | Refresh and show detailed account limits, reset times, and saved reset count.        |
+| `/usage daily\|weekly\|cumulative`         | Show account-wide token activity, not just this Pi session.                          |
+| `/usage reset`                             | Choose and explicitly confirm consumption of a saved usage reset.                    |
+| `/usage warnings on\|off`                  | Enable/disable quota warnings globally.                                              |
+| `/statusline set\|add\|remove ITEMS`       | Configure ordered, comma-separated footer fields.                                    |
+| `/statusline reset`                        | Use the compact preset/tier/quota/credits footer.                                    |
+| `/plan on` / `/plan PROMPT`                | Enter planning mode, optionally starting a planning request.                         |
+| `/plan status`                             | Show the full checklist and planning state.                                          |
+| `/plan execute`                            | Confirm the proposed checklist and start implementation.                             |
+| `/plan off`                                | Leave planning without starting a task; retain the checklist.                        |
+| `/plan track`                              | Enable checklist tracking for ordinary work without starting a task.                 |
+| `/plan clear`                              | Disable planning/tracking and clear the checklist.                                   |
+| `/diff [all\|staged\|unstaged\|untracked]` | Inspect local changes without an LLM request.                                        |
+| `/review base=REF [head=REF]`              | Pin local commits and invoke the existing `code-review` skill.                       |
+| `/review working`                          | Start a separately scoped, read-only working-tree review.                            |
+| `/review`                                  | Choose a review scope interactively.                                                 |
 
 Dialogs and informational output work in the TUI and compatible RPC clients.
 Informational slash-command output is not written to non-interactive stdout,

@@ -1,16 +1,12 @@
-import {access} from "node:fs/promises";
-import {isAbsolute, resolve} from "node:path";
-import {
-  formatSize,
-  truncateHead,
-  type ExtensionAPI,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import { access } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
+import { truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { redirectOutputOption, resolveReportedPaths } from "../routing.ts";
 import { artifactIdsForPaths } from "../output.ts";
 import { ensurePlaywrightConfig } from "../config.ts";
 import type { BrowserOperationMetadata, BrowserRuntime } from "../types.ts";
-import { redactSecrets as redactBrowserSecrets } from "../redaction.ts";
+import { redactSecrets } from "../redaction.ts";
+import { parsePageState, stripTrailingPunctuation, truncateText } from "./shared.ts";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
@@ -118,7 +114,9 @@ const playwrightParameters = Type.Object({
   start: Type.Optional(Type.String({ description: "Drag start target." })),
   end: Type.Optional(Type.String({ description: "Drag end target." })),
   button: Type.Optional(Type.String({ description: "Mouse button: left, right, or middle." })),
-  modifiers: Type.Optional(Type.Array(Type.String(), { description: "Modifier keys for click, such as Shift or Control." })),
+  modifiers: Type.Optional(
+    Type.Array(Type.String(), { description: "Modifier keys for click, such as Shift or Control." }),
+  ),
   key: Type.Optional(Type.String({ description: "Keyboard key, such as Enter or ArrowLeft." })),
   prompt: Type.Optional(Type.String({ description: "Text to provide to a browser prompt dialog." })),
   width: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -143,7 +141,9 @@ const playwrightParameters = Type.Object({
   persistent: Type.Optional(Type.Boolean()),
   profile: Type.Optional(Type.String()),
   attachExtension: Type.Optional(Type.Boolean()),
-  extensionBrowser: Type.Optional(Type.String({ description: "Browser name for extension attachment, such as chrome." })),
+  extensionBrowser: Type.Optional(
+    Type.String({ description: "Browser name for extension attachment, such as chrome." }),
+  ),
   config: Type.Optional(Type.String({ description: "Configuration file for open or attach." })),
   filter: Type.Optional(Type.String()),
   includeStatic: Type.Optional(Type.Boolean()),
@@ -166,7 +166,9 @@ const playwrightParameters = Type.Object({
   title: Type.Optional(Type.String()),
   description: Type.Optional(Type.String()),
   duration: Type.Optional(Type.Integer({ minimum: 0 })),
-  position: Type.Optional(StringEnum(["top-left", "top", "top-right", "bottom-left", "bottom", "bottom-right"] as const)),
+  position: Type.Optional(
+    StringEnum(["top-left", "top", "top-right", "bottom-left", "bottom", "bottom-right"] as const),
+  ),
   cursor: Type.Optional(StringEnum(["none", "pointer"] as const)),
   size: Type.Optional(Type.String()),
   location: Type.Optional(Type.String()),
@@ -244,16 +246,17 @@ function appendBoolean(args: string[], value: boolean | undefined, name: string)
 
 function normalizeScreenshotOutput(args: string[], imageType: PlaywrightParams["imageType"]): string {
   const defaultExtension = imageType ?? "png";
-  const filenameIndex = args.findIndex(arg => arg.startsWith("--filename="));
+  const filenameIndex = args.findIndex((arg) => arg.startsWith("--filename="));
   if (filenameIndex < 0) return `screenshot.${defaultExtension}`;
 
   const filename = args[filenameIndex].slice(args[filenameIndex].indexOf("=") + 1);
   const extension = filename.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
-  const recognizedType = extension === "jpg" || extension === "jpeg"
-    ? "jpeg"
-    : extension === "png" || extension === "webp"
-      ? extension
-      : undefined;
+  const recognizedType =
+    extension === "jpg" || extension === "jpeg"
+      ? "jpeg"
+      : extension === "png" || extension === "webp"
+        ? extension
+        : undefined;
   if (imageType && recognizedType && recognizedType !== imageType) {
     throw new Error(`Playwright screenshot filename extension .${extension} does not match imageType=${imageType}.`);
   }
@@ -262,14 +265,9 @@ function normalizeScreenshotOutput(args: string[], imageType: PlaywrightParams["
 }
 
 function isGlobalAction(action: Action): boolean {
-  return new Set<Action>([
-    "version",
-    "install",
-    "install_skills",
-    "install_browser",
-    "config_print",
-    "show",
-  ]).has(action);
+  return new Set<Action>(["version", "install", "install_skills", "install_browser", "config_print", "show"]).has(
+    action,
+  );
 }
 
 function buildCliArgs(params: PlaywrightParams, sessionName: string): string[] {
@@ -597,18 +595,12 @@ function buildCliArgs(params: PlaywrightParams, sessionName: string): string[] {
 
 type OutputTruncation = Omit<ReturnType<typeof truncateHead>, "content">;
 
-function truncateText(input: string): string {
-  const truncation = truncateHead(input, { maxLines: MAX_DETAIL_OUTPUT_LINES, maxBytes: MAX_DETAIL_OUTPUT_BYTES });
-  if (!truncation.truncated) return truncation.content;
-  return `${truncation.content}\n[… output truncated: ${truncation.outputLines}/${truncation.totalLines} lines, ${formatSize(truncation.outputBytes)}/${formatSize(truncation.totalBytes)} …]`;
-}
-
 async function formatOutput(
   runtime: BrowserRuntime,
   ctx: ExtensionContext,
   input: string,
   correlationId?: string,
-  metadata: {url?: string; title?: string} = {},
+  metadata: { url?: string; title?: string } = {},
 ): Promise<{
   text: string;
   fullOutputPath?: string;
@@ -622,107 +614,13 @@ async function formatOutput(
     correlationId,
     ...metadata,
   });
-  if (!truncation.truncated) return {text: output.text};
-  const {content: _content, ...truncationMetadata} = truncation;
-  return {text: output.text, fullOutputPath: output.fullOutputPath, truncation: truncationMetadata};
+  if (!truncation.truncated) return { text: output.text };
+  const { content: _content, ...truncationMetadata } = truncation;
+  return { text: output.text, fullOutputPath: output.fullOutputPath, truncation: truncationMetadata };
 }
 
-const SENSITIVE_KEYS = new Set([
-  "authorization",
-  "proxyauthorization",
-  "auth",
-  "cookie",
-  "setcookie",
-  "password",
-  "passwd",
-  "secret",
-  "clientsecret",
-  "apikey",
-  "xapikey",
-  "token",
-  "accesstoken",
-  "refreshtoken",
-  "session",
-  "sessionid",
-  "phpsessid",
-  "jsessionid",
-  "credential",
-  "signature",
-  "jwt",
-]);
-
-function normalizedKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function isSensitiveKey(value: string): boolean {
-  const key = normalizedKey(value);
-  return SENSITIVE_KEYS.has(key)
-    || /(?:authorization|cookie|password|passwd|token|secret|apikey|session|sessid|credential|signature|jwt)/.test(key);
-}
-
-function redactPlainText(input: string): string {
-  return input
-    .replace(/((?:proxy-)?authorization\s*:\s*)[^\r\n]+/gi, "$1[REDACTED]")
-    .replace(/(set-cookie\s*:\s*)[^\r\n]+/gi, "$1[REDACTED]")
-    .replace(/(cookie\s*:\s*)[^\r\n]+/gi, "$1[REDACTED]")
-    .replace(/(password\s*[=:]\s*)[^\s,&}]+/gi, "$1[REDACTED]");
-}
-
-function redactCookiePlainText(input: string): string {
-  return input
-    .replace(/(^|\n)([^=\n]+)=([^\n]*?)(\s+\(domain:[^\n]*\))(?=$|\n)/g, "$1$2=[REDACTED]$4")
-    .replace(/(["']value["']\s*:\s*)("[^"]*"|'[^']*'|[^,}\s]+)/gi, "$1[REDACTED]");
-}
-
-function redactStructured(value: unknown, ancestors: string[] = [], redactCookieValues = false): unknown {
-  if (typeof value === "string") {
-    const redacted = redactPlainText(value);
-    return redactCookieValues ? redactCookiePlainText(redacted) : redacted;
-  }
-  if (Array.isArray(value)) return value.map((item) => redactStructured(item, ancestors, redactCookieValues));
-  if (!value || typeof value !== "object") return value;
-
-  const record = value as Record<string, unknown>;
-  const namedSensitiveValue = typeof record.name === "string" && isSensitiveKey(record.name);
-  const cookieContext = ancestors.some((key) => normalizedKey(key).includes("cookie"));
-  const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(record)) {
-    if (isSensitiveKey(key) || (normalizedKey(key) === "value" && (namedSensitiveValue || cookieContext))) {
-      result[key] = "[REDACTED]";
-    } else {
-      result[key] = redactStructured(entry, [...ancestors, key], redactCookieValues);
-    }
-  }
-  return result;
-}
-
-function redactSecrets(input: string, action?: Action): string {
-  const trimmed = input.trim();
-  if (!trimmed) return input;
-  const redactCookieValues = action === "cookie_list" || action === "cookie_get" || action === "cookie_set";
-  try {
-    return redactBrowserSecrets(JSON.stringify(redactStructured(JSON.parse(trimmed), [], redactCookieValues), null, 2));
-  } catch {
-    const lines = input.split("\n");
-    let parsedLine = false;
-    const redactedLines = lines.map((line) => {
-      try {
-        const parsed = JSON.parse(line);
-        parsedLine = true;
-        return JSON.stringify(redactStructured(parsed, [], redactCookieValues));
-      } catch {
-        const redacted = redactPlainText(line);
-        return redactCookieValues ? redactCookiePlainText(redacted) : redacted;
-      }
-    });
-    const redacted = parsedLine ? redactedLines.join("\n") : redactPlainText(input);
-    return redactBrowserSecrets(redactCookieValues ? redactCookiePlainText(redacted) : redacted);
-  }
-}
-
-function cleanPath(value: string): string {
-  return value.replace(/[),.;]+$/g, "");
+function isCookieAction(action: Action): boolean {
+  return action === "cookie_list" || action === "cookie_get" || action === "cookie_set";
 }
 
 function jsonSnapshotPath(output: string): string | undefined {
@@ -741,22 +639,15 @@ function extractArtifactPaths(output: string): string[] {
   const linkedPaths = [...output.matchAll(/\[(?:Snapshot|Screenshot|PDF|Video|Trace|Artifact)[^\]]*\]\(([^)]+)\)/gi)]
     .map((match) => match[1])
     .filter((path): path is string => Boolean(path));
-  return [...new Set([...workspacePaths, ...linkedPaths, ...(jsonPath ? [jsonPath] : [])].map(cleanPath))];
+  return [
+    ...new Set([...workspacePaths, ...linkedPaths, ...(jsonPath ? [jsonPath] : [])].map(stripTrailingPunctuation)),
+  ];
 }
 
 function extractSnapshotPath(output: string, artifacts: string[]): string | undefined {
   const explicit = jsonSnapshotPath(output) ?? output.match(/\[Snapshot[^\]]*\]\(([^)]+)\)/i)?.[1];
-  if (explicit) return cleanPath(explicit);
+  if (explicit) return stripTrailingPunctuation(explicit);
   return artifacts.find((path) => /\.(?:ya?ml|md)$/i.test(path));
-}
-
-function parsePageState(output: string): { url?: string; title?: string } {
-  const url = output.match(/Page URL:\s*([^\n\r]+)/i)?.[1]?.trim();
-  const title = output.match(/Page Title:\s*([^\n\r]+)/i)?.[1]?.trim();
-  return {
-    url: url && url !== "undefined" ? url : undefined,
-    title: title && title !== "undefined" ? title : undefined,
-  };
 }
 
 async function executeAction(
@@ -772,8 +663,8 @@ async function executeAction(
   const sessionName = browserState.playwrightSession;
   const inputParams: PlaywrightParams = {
     ...params,
-    files: params.files?.map(path => resolve(ctx.cwd, path)),
-    dropPaths: params.dropPaths?.map(path => resolve(ctx.cwd, path)),
+    files: params.files?.map((path) => resolve(ctx.cwd, path)),
+    dropPaths: params.dropPaths?.map((path) => resolve(ctx.cwd, path)),
     filename: params.action === "state_load" && params.filename ? resolve(ctx.cwd, params.filename) : params.filename,
     codeFilename: params.codeFilename ? resolve(ctx.cwd, params.codeFilename) : undefined,
   };
@@ -783,68 +674,100 @@ async function executeAction(
     ...(inputParams.action === "state_load" && inputParams.filename ? [inputParams.filename] : []),
     ...(inputParams.codeFilename ? [inputParams.codeFilename] : []),
   ];
-  await Promise.all(inputPaths.map(async path => {
-    try {
-      await access(path);
-    } catch {
-      throw new Error(`Playwright input path is not readable: ${path}`);
-    }
-  }));
+  await Promise.all(
+    inputPaths.map(async (path) => {
+      try {
+        await access(path);
+      } catch {
+        throw new Error(`Playwright input path is not readable: ${path}`);
+      }
+    }),
+  );
   const args = buildCliArgs(inputParams, sessionName);
   if (["open", "attach", "config_print"].includes(inputParams.action)) {
     const sourceConfig = inputParams.config ? resolve(ctx.cwd, inputParams.config) : undefined;
     const configPath = await ensurePlaywrightConfig(workspace, sourceConfig);
-    const configIndex = args.findIndex(arg => arg.startsWith("--config="));
+    const configIndex = args.findIndex((arg) => arg.startsWith("--config="));
     if (configIndex >= 0) args[configIndex] = `--config=${configPath}`;
     else args.push(`--config=${configPath}`);
-    if (inputParams.action === "attach" && browserState.sharedCdpEndpoint) args.push(`--cdp=${browserState.sharedCdpEndpoint}`);
+    if (inputParams.action === "attach" && browserState.sharedCdpEndpoint)
+      args.push(`--cdp=${browserState.sharedCdpEndpoint}`);
   }
 
   if (browserState.sharedCdpEndpoint && params.action === "close") {
     args[args.length - 1] = "detach";
-  } else if (browserState.sharedCdpEndpoint && !browserState.playwrightAttached && !isGlobalAction(params.action) && !["attach", "detach"].includes(params.action)) {
+  } else if (
+    browserState.sharedCdpEndpoint &&
+    !browserState.playwrightAttached &&
+    !isGlobalAction(params.action) &&
+    !["attach", "detach"].includes(params.action)
+  ) {
     const configPath = await ensurePlaywrightConfig(workspace);
-    const attached = await runtime.exec(pi, "playwright-cli", [
-      `-s=${sessionName}`,
-      "attach",
-      `--cdp=${browserState.sharedCdpEndpoint}`,
-      `--config=${configPath}`,
-    ], ctx, {signal, timeout: params.timeout ?? DEFAULT_TIMEOUT});
+    const attached = await runtime.exec(
+      pi,
+      "playwright-cli",
+      [`-s=${sessionName}`, "attach", `--cdp=${browserState.sharedCdpEndpoint}`, `--config=${configPath}`],
+      ctx,
+      { signal, timeout: params.timeout ?? DEFAULT_TIMEOUT },
+    );
     if (attached.code !== 0 || attached.killed) {
       const output = redactSecrets(`${attached.stdout}\n${attached.stderr}`.trim());
-      throw new Error(`playwright-cli attach --cdp failed${attached.killed ? " (process terminated)" : ` (exit code ${attached.code})`}\n\n${output || "(no output)"}`);
+      throw new Error(
+        `playwright-cli attach --cdp failed${attached.killed ? " (process terminated)" : ` (exit code ${attached.code})`}\n\n${output || "(no output)"}`,
+      );
     }
-    await runtime.updateState(ctx, {playwrightAttached: true, lastBackend: "playwright"});
+    await runtime.updateState(ctx, { playwrightAttached: true, lastBackend: "playwright" });
   }
 
   const outputActions = new Set<Action>([
-    "snapshot", "screenshot", "pdf", "request", "request_headers", "request_body", "response_headers", "response_body", "eval",
+    "snapshot",
+    "screenshot",
+    "pdf",
+    "request",
+    "request_headers",
+    "request_body",
+    "response_headers",
+    "response_body",
+    "eval",
   ]);
   let generatedOutput: string | undefined;
   if (outputActions.has(params.action as Action)) {
-    const screenshotName = params.action === "screenshot"
-      ? normalizeScreenshotOutput(args, params.imageType)
-      : "screenshot.png";
+    const screenshotName =
+      params.action === "screenshot" ? normalizeScreenshotOutput(args, params.imageType) : "screenshot.png";
     const defaultNames: Partial<Record<Action, string>> = {
-      snapshot: "snapshot.md", screenshot: screenshotName, pdf: "page.pdf", request: "request.json",
-      request_headers: "request-headers.json", request_body: "request-body.txt", response_headers: "response-headers.json", response_body: "response-body.dat", eval: "eval-result.json",
+      snapshot: "snapshot.md",
+      screenshot: screenshotName,
+      pdf: "page.pdf",
+      request: "request.json",
+      request_headers: "request-headers.json",
+      request_body: "request-body.txt",
+      response_headers: "response-headers.json",
+      response_body: "response-body.dat",
+      eval: "eval-result.json",
     };
-    generatedOutput = await redirectOutputOption(args, ["filename"], runtime, ctx, "playwright", defaultNames[params.action as Action] ?? "artifact.dat");
+    generatedOutput = await redirectOutputOption(
+      args,
+      ["filename"],
+      runtime,
+      ctx,
+      "playwright",
+      defaultNames[params.action as Action] ?? "artifact.dat",
+    );
   } else if (params.action === "state_save") {
-    const stateIndex = args.findIndex(arg => arg === "state-save");
+    const stateIndex = args.findIndex((arg) => arg === "state-save");
     const existing = stateIndex >= 0 ? args[stateIndex + 1] : undefined;
     generatedOutput = await runtime.allocateFile(ctx, "playwright", existing || "state.json", "other");
     if (stateIndex >= 0 && existing) args[stateIndex + 1] = generatedOutput;
     else if (stateIndex >= 0) args.splice(stateIndex + 1, 0, generatedOutput);
   } else if (params.action === "video_start") {
-    const videoIndex = args.findIndex(arg => arg === "video-start");
+    const videoIndex = args.findIndex((arg) => arg === "video-start");
     const existing = videoIndex >= 0 ? args[videoIndex + 1] : undefined;
     const path = await runtime.allocateFile(ctx, "playwright", existing || "video.webm", "video");
     if (videoIndex >= 0 && existing) args[videoIndex + 1] = path;
     else if (videoIndex >= 0) args.splice(videoIndex + 1, 0, path);
     generatedOutput = path;
   }
-  const profileIndex = args.findIndex(arg => arg.startsWith("--profile="));
+  const profileIndex = args.findIndex((arg) => arg.startsWith("--profile="));
   if (profileIndex >= 0) {
     const rawProfile = args[profileIndex].slice(args[profileIndex].indexOf("=") + 1);
     const profileName = rawProfile.split(/[\\/]/).pop() || "profile";
@@ -852,15 +775,15 @@ async function executeAction(
     args[profileIndex] = `--profile=${profilePath}`;
   }
 
-  const commandAction = args.find(arg => !arg.startsWith("-")) ?? params.action;
+  const commandAction = args.find((arg) => !arg.startsWith("-")) ?? params.action;
   const command = `playwright-cli ${commandAction}`;
   const result = await runtime.exec(pi, "playwright-cli", args, ctx, {
     signal,
     timeout: params.timeout ?? DEFAULT_TIMEOUT,
   });
 
-  const safeStdout = redactSecrets(result.stdout.trim(), params.action as Action);
-  const safeStderr = redactSecrets(result.stderr.trim(), params.action as Action);
+  const safeStdout = redactSecrets(result.stdout.trim(), { cookieValues: isCookieAction(params.action) });
+  const safeStderr = redactSecrets(result.stderr.trim(), { cookieValues: isCookieAction(params.action) });
   const combined = [safeStdout, safeStderr ? `stderr:\n${safeStderr}` : ""].filter(Boolean).join("\n\n");
 
   if (result.code !== 0 || result.killed) {
@@ -878,7 +801,7 @@ async function executeAction(
     url: page.url,
     title: page.title,
   });
-  const artifacts = records.map(artifact => artifact.path);
+  const artifacts = records.map((artifact) => artifact.path);
   const reportedSnapshot = extractSnapshotPath(safeStdout, extractedPaths);
   const snapshotPath = reportedSnapshot ? resolveReportedPaths(workspace.root, [reportedSnapshot])[0] : undefined;
   const snapshot = snapshotPath ? await runtime.readArtifact(ctx, snapshotPath) : undefined;
@@ -889,7 +812,12 @@ async function executeAction(
   const output = await formatOutput(runtime, ctx, sections.join("\n\n"), correlationId, page);
   if (output.fullOutputPath) artifacts.push(output.fullOutputPath);
   const artifactIds = await artifactIdsForPaths(runtime, ctx, artifacts);
-  const statePatch: {lastBackend: "playwright"; currentUrl?: string; currentTitle?: string; playwrightAttached?: boolean} = {lastBackend: "playwright"};
+  const statePatch: {
+    lastBackend: "playwright";
+    currentUrl?: string;
+    currentTitle?: string;
+    playwrightAttached?: boolean;
+  } = { lastBackend: "playwright" };
   if (page.url) statePatch.currentUrl = page.url;
   if (page.title) statePatch.currentTitle = page.title;
   if (params.action === "attach") statePatch.playwrightAttached = true;
@@ -915,13 +843,11 @@ async function executeAction(
       artifacts,
       fullOutputPath: output.fullOutputPath,
       truncation: output.truncation,
-      stdout: truncateText(safeStdout),
-      stderr: truncateText(safeStderr),
+      stdout: truncateText(safeStdout, MAX_DETAIL_OUTPUT_BYTES, MAX_DETAIL_OUTPUT_LINES, { notice: true }),
+      stderr: truncateText(safeStderr, MAX_DETAIL_OUTPUT_BYTES, MAX_DETAIL_OUTPUT_LINES, { notice: true }),
     },
   };
 }
-
-
 
 export function registerPlaywright(pi: ExtensionAPI, runtime: BrowserRuntime): void {
   pi.registerTool({
@@ -935,14 +861,17 @@ export function registerPlaywright(pi: ExtensionAPI, runtime: BrowserRuntime): v
       try {
         result = await executeAction(pi, runtime, params, ctx, signal, toolCallId);
       } catch (error) {
-        const artifacts = await runtime.manifest(ctx).then(manifest => manifest.artifacts.filter(artifact => artifact.correlationId === toolCallId)).catch(() => []);
+        const artifacts = await runtime
+          .manifest(ctx)
+          .then((manifest) => manifest.artifacts.filter((artifact) => artifact.correlationId === toolCallId))
+          .catch(() => []);
         await runtime.recordEvidence(ctx, {
           backend: "playwright",
           operation: params.action,
           status: "failed",
           summary: error instanceof Error ? error.message : String(error),
-          artifactIds: artifacts.map(artifact => artifact.id),
-          reportId: artifacts.find(artifact => artifact.kind === "report")?.id,
+          artifactIds: artifacts.map((artifact) => artifact.id),
+          reportId: artifacts.find((artifact) => artifact.kind === "report")?.id,
           correlationId: toolCallId,
         });
         throw error;
@@ -957,10 +886,10 @@ export function registerPlaywright(pi: ExtensionAPI, runtime: BrowserRuntime): v
         artifactIds: result.details.artifactIds,
         reportId: result.details.reportId,
         correlationId: toolCallId,
-        data: {page: result.details.page, action: result.details.action},
+        data: { page: result.details.page, action: result.details.action },
       });
       return {
-        content: [{type: "text", text: result.text}],
+        content: [{ type: "text", text: result.text }],
         details: result.details,
       };
     },

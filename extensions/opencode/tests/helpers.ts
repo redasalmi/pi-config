@@ -7,10 +7,22 @@ import { createStatusline } from "../statusline.ts";
 import { registerLifecycle } from "../lifecycle.ts";
 import { registerCommand } from "../status.ts";
 
-export function model(provider = "opencode-go", baseUrl = "https://opencode.ai/zen/go/v1"): Model<"openai-completions"> {
-  return { id: "test-model", name: "Test Model", api: "openai-completions", provider, baseUrl,
-    reasoning: true, input: ["text"], contextWindow: 100_000, maxTokens: 10_000,
-    cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 } };
+export function model(
+  provider = "opencode-go",
+  baseUrl = "https://opencode.ai/zen/go/v1",
+): Model<"openai-completions"> {
+  return {
+    id: "test-model",
+    name: "Test Model",
+    api: "openai-completions",
+    provider,
+    baseUrl,
+    reasoning: true,
+    input: ["text"],
+    contextWindow: 100_000,
+    maxTokens: 10_000,
+    cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 },
+  };
 }
 
 type Handler = (event: any, ctx: ExtensionCommandContext) => unknown;
@@ -28,13 +40,21 @@ export function harness() {
   let authCalls = 0;
   let idle = true;
   const pi = {
-    on(name: string, handler: Handler) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
-    registerCommand(name: string, command: Command) { commands.set(name, command); },
+    on(name: string, handler: Handler) {
+      handlers.set(name, [...(handlers.get(name) ?? []), handler]);
+    },
+    registerCommand(name: string, command: Command) {
+      commands.set(name, command);
+    },
     getThinkingLevel: () => "medium",
   } as unknown as ExtensionAPI;
   const ctx = {
-    cwd: process.cwd(), mode: "tui", hasUI: true,
-    get model() { return activeModel; },
+    cwd: process.cwd(),
+    mode: "tui",
+    hasUI: true,
+    get model() {
+      return activeModel;
+    },
     isIdle: () => idle,
     getContextUsage: () => ({ percent: 25 }),
     sessionManager: { getBranch: () => [...entries] },
@@ -54,14 +74,32 @@ export function harness() {
     },
   } as unknown as ExtensionCommandContext;
   return {
-    pi, ctx, notices, statuses, commands,
-    get authCalls() { return authCalls; },
-    set auth(value: AuthResult | undefined) { auth = value; },
-    set entries(value: SessionEntry[]) { entries = value; },
-    set idle(value: boolean) { idle = value; },
-    set model(value: ReturnType<typeof model> | undefined) { activeModel = value; },
-    async emit(name: string, event: unknown = {}) { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); },
-    async command(args = "") { await commands.get("opencode")!.handler(args, ctx); },
+    pi,
+    ctx,
+    notices,
+    statuses,
+    commands,
+    get authCalls() {
+      return authCalls;
+    },
+    set auth(value: AuthResult | undefined) {
+      auth = value;
+    },
+    set entries(value: SessionEntry[]) {
+      entries = value;
+    },
+    set idle(value: boolean) {
+      idle = value;
+    },
+    set model(value: ReturnType<typeof model> | undefined) {
+      activeModel = value;
+    },
+    async emit(name: string, event: unknown = {}) {
+      for (const handler of handlers.get(name) ?? []) await handler(event, ctx);
+    },
+    async command(args = "") {
+      await commands.get("opencode")!.handler(args, ctx);
+    },
   };
 }
 
@@ -81,10 +119,14 @@ export function payload(used = 20, reset = Date.now() + 3600_000) {
   return { usage: { rolling: { ...window }, weekly: { ...window }, monthly: { ...window } } };
 }
 
-export function response(value: unknown = payload()): Response { return Response.json(value); }
+export function response(value: unknown = payload()): Response {
+  return Response.json(value);
+}
 
 export function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }

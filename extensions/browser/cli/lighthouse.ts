@@ -1,5 +1,5 @@
-import {access, readFile, readdir} from "node:fs/promises";
-import {basename, dirname, join, resolve} from "node:path";
+import { access, readFile, readdir } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
@@ -8,7 +8,9 @@ import { redirectOutputOption, resolveReportedPaths } from "../routing.ts";
 import { artifactIdsForPaths } from "../output.ts";
 import { safeName } from "../paths.ts";
 import type { BrowserOperationMetadata, BrowserRuntime } from "../types.ts";
-import { redactSecrets as redactBrowserSecrets } from "../redaction.ts";
+import { redactSecrets } from "../redaction.ts";
+import { commandLabel } from "./process.ts";
+import { extractArtifactPathsByExtension } from "./shared.ts";
 
 const ACTIONS = [
   "run",
@@ -26,12 +28,7 @@ type Action = (typeof ACTIONS)[number];
 type OutputFormat = "json" | "html" | "csv";
 type OptionValue = string | number | boolean | string[];
 
-const optionValue = Type.Union([
-  Type.String(),
-  Type.Number(),
-  Type.Boolean(),
-  Type.Array(Type.String()),
-]);
+const optionValue = Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]);
 
 const outputFormat = StringEnum(["json", "html", "csv"] as const, {
   description: "Lighthouse reporter format.",
@@ -54,17 +51,14 @@ const lighthouseParameters = Type.Object({
     }),
   ),
   output: Type.Optional(
-    Type.Union([
-      outputFormat,
-      Type.Array(outputFormat),
-    ], {
+    Type.Union([outputFormat, Type.Array(outputFormat)], {
       description: "Report format or formats. Defaults to JSON for run and audit.",
     }),
   ),
   outputPath: Type.Optional(
     Type.String({
       description:
-        "Report output path. Browser routes generated reports into its per-project artifact store and returns the path."
+        "Report output path. Browser routes generated reports into its per-project artifact store and returns the path.",
     }),
   ),
   options: Type.Optional(
@@ -87,7 +81,7 @@ const lighthouseParameters = Type.Object({
     }),
   ),
   regressionThresholds: Type.Optional(
-    Type.Record(Type.String(), Type.Number({minimum: 0}), {
+    Type.Record(Type.String(), Type.Number({ minimum: 0 }), {
       description:
         "Maximum allowed degradation for compare_reports. Category values are score percentage points; metric values use Lighthouse numeric units.",
     }),
@@ -97,12 +91,8 @@ const lighthouseParameters = Type.Object({
       description: "Fail the action when a quality or regression threshold is violated.",
     }),
   ),
-  baselinePath: Type.Optional(
-    Type.String({description: "Baseline JSON Lighthouse report for compare_reports."}),
-  ),
-  candidatePath: Type.Optional(
-    Type.String({description: "Candidate JSON Lighthouse report for compare_reports."}),
-  ),
+  baselinePath: Type.Optional(Type.String({ description: "Baseline JSON Lighthouse report for compare_reports." })),
+  candidatePath: Type.Optional(Type.String({ description: "Candidate JSON Lighthouse report for compare_reports." })),
   timeoutMs: Type.Optional(
     Type.Integer({
       minimum: 1,
@@ -142,12 +132,15 @@ type LighthouseResult = {
     throttlingMethod?: string;
     output?: string | string[];
   };
-  categories?: Record<string, {
-    id?: string;
-    title?: string;
-    score?: number | null;
-    categoryScoreDisplayMode?: string;
-  }>;
+  categories?: Record<
+    string,
+    {
+      id?: string;
+      title?: string;
+      score?: number | null;
+      categoryScoreDisplayMode?: string;
+    }
+  >;
   audits?: Record<string, LighthouseAudit>;
 };
 
@@ -273,8 +266,7 @@ const MAX_SUMMARY_BYTES = 16_000;
 const MAX_DETAIL_OUTPUT_BYTES = 4_000;
 const MAX_DETAIL_OUTPUT_LINES = 100;
 const DEFAULT_TIMEOUT = 180_000;
-const ARTIFACT_EXTENSIONS =
-  "html|json|csv|gz|png|jpeg|jpg|webp|trace|devtoolslog|txt";
+const ARTIFACT_EXTENSIONS = "html|json|csv|gz|png|jpeg|jpg|webp|trace|devtoolslog|txt";
 
 const METRIC_IDS = [
   "first-contentful-paint",
@@ -296,29 +288,14 @@ const LIST_FLAGS: Record<MetadataAction, string> = {
 
 function truncateText(input: string, maxBytes = MAX_OUTPUT_BYTES, maxLines = MAX_OUTPUT_LINES): string {
   const lines = input.split("\n");
-  const lineLimited = lines.length > maxLines
-    ? `${lines.slice(0, maxLines).join("\n")}\n[… output truncated at ${maxLines} lines …]`
-    : input;
+  const lineLimited =
+    lines.length > maxLines
+      ? `${lines.slice(0, maxLines).join("\n")}\n[… output truncated at ${maxLines} lines …]`
+      : input;
 
   if (Buffer.byteLength(lineLimited, "utf8") <= maxBytes) return lineLimited;
   const bytes = Buffer.from(lineLimited, "utf8");
   return `${bytes.subarray(0, maxBytes).toString("utf8")}\n[… output truncated at ${maxBytes} bytes …]`;
-}
-
-function redactSecrets(input: string): string {
-  const redacted = input
-    .replace(/(--extra-(?:headers|headers-path)=)([^\s]+)/gi, "$1[REDACTED]")
-    .replace(/([\"']?(?:authorization|cookie|set-cookie|password|passwd|token|secret|api[-_]?key)[\"']?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,}\s\]]+)/gi, "$1[REDACTED]")
-    .replace(/(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,}\]]+/gi, "$1[REDACTED]");
-  return redactBrowserSecrets(redacted);
-}
-
-function shellQuote(value: string): string {
-  return /[^a-zA-Z0-9_./:=@%+,-]/.test(value) ? JSON.stringify(value) : value;
-}
-
-function commandLabel(args: string[]): string {
-  return `lighthouse ${args.map(shellQuote).join(" ")}`;
 }
 
 function appendOption(args: string[], name: string, value: OptionValue): void {
@@ -330,7 +307,7 @@ function appendOption(args: string[], name: string, value: OptionValue): void {
 }
 
 function hasOption(options: Record<string, OptionValue>, names: string[]): boolean {
-  return names.some(name => Object.prototype.hasOwnProperty.call(options, name));
+  return names.some((name) => Object.prototype.hasOwnProperty.call(options, name));
 }
 
 function getOption(options: Record<string, OptionValue>, names: string[]): OptionValue | undefined {
@@ -343,20 +320,20 @@ function getOption(options: Record<string, OptionValue>, names: string[]): Optio
 function asOutputFormats(value: LighthouseParams["output"] | OptionValue | undefined): OutputFormat[] {
   if (value === undefined) return [];
   const values = Array.isArray(value) ? value : [value];
-  return values.filter((item): item is OutputFormat =>
-    item === "json" || item === "html" || item === "csv"
-  );
+  return values.filter((item): item is OutputFormat => item === "json" || item === "html" || item === "csv");
 }
 
 function resolveUserPath(value: string, cwd: string): string {
   return resolve(cwd, value);
 }
 
-function lighthouseCdpConnection(endpoint: string | undefined): {hostname: string; port: number} | undefined {
+function lighthouseCdpConnection(endpoint: string | undefined): { hostname: string; port: number } | undefined {
   if (!endpoint) return undefined;
   const url = new URL(endpoint);
   if (url.protocol !== "http:") {
-    throw new Error("Lighthouse shared CDP requires a local HTTP browser URL; HTTPS and WebSocket endpoints are not supported by the Lighthouse CLI.");
+    throw new Error(
+      "Lighthouse shared CDP requires a local HTTP browser URL; HTTPS and WebSocket endpoints are not supported by the Lighthouse CLI.",
+    );
   }
   if (url.pathname !== "/" || url.search || url.hash) {
     throw new Error("Lighthouse shared CDP requires a browser URL without a path, query, or fragment.");
@@ -380,37 +357,21 @@ function outputPathsForFormats(outputPath: string, formats: OutputFormat[]): str
   if (outputPath === "stdout") return [];
   if (formats.length === 1) return [outputPath];
   const prefix = stripKnownExtension(outputPath);
-  return formats.map(format => `${prefix}.report.${format}`);
+  return formats.map((format) => `${prefix}.report.${format}`);
 }
 
 async function outputAssetsForPrefix(prefix: string | undefined): Promise<string[]> {
   if (!prefix) return [];
   const directory = dirname(prefix);
   const filenamePrefix = `${basename(prefix)}-`;
-  const entries = await readdir(directory, {withFileTypes: true}).catch(() => []);
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
   return entries
-    .filter(entry => entry.isFile() && entry.name.startsWith(filenamePrefix))
-    .map(entry => join(directory, entry.name));
+    .filter((entry) => entry.isFile() && entry.name.startsWith(filenamePrefix))
+    .map((entry) => join(directory, entry.name));
 }
 
 function optionEnabled(value: OptionValue | undefined): boolean {
   return value !== undefined && value !== false && value !== "false";
-}
-
-function cleanArtifactPath(value: string): string {
-  return value.replace(/[),.;]+$/g, "");
-}
-
-function extractArtifactPaths(output: string): string[] {
-  const pathPattern = new RegExp(
-    `(?:^|[\\s([\\\"'])((?:/|\\./|[A-Za-z]:[\\\\/])[^\\s)\\],;\\\"']+\\.(?:${ARTIFACT_EXTENSIONS})(?:\\.gz)?)`,
-    "g",
-  );
-  const paths: string[] = [];
-  for (const match of output.matchAll(pathPattern)) {
-    paths.push(cleanArtifactPath(match[1]));
-  }
-  return [...new Set(paths)];
 }
 
 function parseJsonOutput(output: string): unknown | undefined {
@@ -458,17 +419,15 @@ function median(values: number[]): number | undefined {
   if (values.length === 0) return undefined;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle];
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 }
 
 function collectWarnings(lhr: LighthouseResult): string[] {
-  const warnings = (lhr.runWarnings ?? []).map(warning =>
-    typeof warning === "string" ? warning : warning.message ?? JSON.stringify(warning)
+  const warnings = (lhr.runWarnings ?? []).map((warning) =>
+    typeof warning === "string" ? warning : (warning.message ?? JSON.stringify(warning)),
   );
   if (lhr.runtimeError?.message) warnings.unshift(lhr.runtimeError.message);
-  return [...new Set(warnings.filter(Boolean).map(redactSecrets))];
+  return [...new Set(warnings.filter(Boolean).map((warning) => redactSecrets(warning)))];
 }
 
 function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
@@ -495,19 +454,21 @@ function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
     const audit = audits[id];
     if (!audit) continue;
     const value = auditDisplayValue(audit);
-    if (value) metrics.push({
-      id,
-      value,
-      numericValue: audit.numericValue,
-      numericUnit: audit.numericUnit,
-    });
+    if (value)
+      metrics.push({
+        id,
+        value,
+        numericValue: audit.numericValue,
+        numericUnit: audit.numericUnit,
+      });
   }
 
   const failedAudits = Object.entries(audits)
-    .filter(([, audit]) =>
-      typeof audit.score === "number" &&
-      audit.score < 1 &&
-      !["manual", "informative", "notApplicable", "error"].includes(audit.scoreDisplayMode ?? "")
+    .filter(
+      ([, audit]) =>
+        typeof audit.score === "number" &&
+        audit.score < 1 &&
+        !["manual", "informative", "notApplicable", "error"].includes(audit.scoreDisplayMode ?? ""),
     )
     .map(([id, audit]) => ({
       id,
@@ -518,10 +479,11 @@ function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
     .sort((a, b) => a.score - b.score || a.id.localeCompare(b.id));
 
   const opportunities = Object.entries(audits)
-    .filter(([, audit]) =>
-      audit.details?.type === "opportunity" ||
-      typeof audit.details?.overallSavingsMs === "number" ||
-      typeof audit.details?.overallSavingsBytes === "number"
+    .filter(
+      ([, audit]) =>
+        audit.details?.type === "opportunity" ||
+        typeof audit.details?.overallSavingsMs === "number" ||
+        typeof audit.details?.overallSavingsBytes === "number",
     )
     .map(([id, audit]) => ({
       id,
@@ -529,16 +491,14 @@ function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
       savingsMs: audit.details?.overallSavingsMs,
       savingsBytes: audit.details?.overallSavingsBytes,
     }))
-    .sort((a, b) =>
-      (b.savingsMs ?? 0) - (a.savingsMs ?? 0) ||
-      (b.savingsBytes ?? 0) - (a.savingsBytes ?? 0)
-    );
+    .sort((a, b) => (b.savingsMs ?? 0) - (a.savingsMs ?? 0) || (b.savingsBytes ?? 0) - (a.savingsBytes ?? 0));
 
   return {
     version: lhr.lighthouseVersion,
-    url: lhr.finalDisplayedUrl || lhr.requestedUrl
-      ? redactSecrets(lhr.finalDisplayedUrl ?? lhr.requestedUrl ?? "")
-      : undefined,
+    url:
+      lhr.finalDisplayedUrl || lhr.requestedUrl
+        ? redactSecrets(lhr.finalDisplayedUrl ?? lhr.requestedUrl ?? "")
+        : undefined,
     scores,
     categoryScores,
     categoryScoreModes: Object.fromEntries(
@@ -548,9 +508,11 @@ function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
     metricValues,
     metricUnits,
     auditScores: Object.fromEntries(
-      Object.entries(audits).flatMap(([id, audit]) => typeof audit.score === "number" ? [[id, audit.score]] : []),
+      Object.entries(audits).flatMap(([id, audit]) => (typeof audit.score === "number" ? [[id, audit.score]] : [])),
     ),
-    auditTitles: Object.fromEntries(Object.entries(audits).map(([id, audit]) => [id, redactSecrets(audit.title ?? id)])),
+    auditTitles: Object.fromEntries(
+      Object.entries(audits).map(([id, audit]) => [id, redactSecrets(audit.title ?? id)]),
+    ),
     auditDisplayModes: Object.fromEntries(Object.entries(audits).map(([id, audit]) => [id, audit.scoreDisplayMode])),
     failedAudits,
     opportunities,
@@ -563,36 +525,39 @@ function summarizeLighthouseResult(lhr: LighthouseResult): LighthouseSummary {
 function medianSummary(summaries: LighthouseSummary[]): LighthouseSummary {
   if (summaries.length === 0) throw new Error("Cannot calculate a median without Lighthouse results.");
   const first = summaries[0];
-  const categoryIds = [...new Set(summaries.flatMap(summary => Object.keys(summary.categoryScores)))];
+  const categoryIds = [...new Set(summaries.flatMap((summary) => Object.keys(summary.categoryScores)))];
   const categoryScores: Record<string, number | null> = {};
   const categoryScoreModes: Record<string, string | undefined> = {};
   for (const id of categoryIds) {
     const values = summaries
-      .map(summary => summary.categoryScores[id])
+      .map((summary) => summary.categoryScores[id])
       .filter((value): value is number => typeof value === "number");
     categoryScores[id] = median(values) ?? null;
     categoryScoreModes[id] = first.categoryScoreModes[id];
   }
 
-  const scores = categoryIds.map(id => ({
+  const scores = categoryIds.map((id) => ({
     id,
-    title: summaries.find(summary => summary.scores.some(score => score.id === id))?.scores.find(score => score.id === id)?.title ?? id,
+    title:
+      summaries
+        .find((summary) => summary.scores.some((score) => score.id === id))
+        ?.scores.find((score) => score.id === id)?.title ?? id,
     score: scoreText(categoryScores[id], categoryScoreModes[id]),
   }));
 
-  const metricIds = [...new Set(summaries.flatMap(summary => Object.keys(summary.metricValues)))];
+  const metricIds = [...new Set(summaries.flatMap((summary) => Object.keys(summary.metricValues)))];
   const metricValues: Record<string, number> = {};
   const metricUnits: Record<string, string | undefined> = {};
   const metrics: LighthouseMetric[] = [];
   for (const id of metricIds) {
     const values = summaries
-      .map(summary => summary.metricValues[id])
+      .map((summary) => summary.metricValues[id])
       .filter((value): value is number => typeof value === "number");
     const value = median(values);
     if (value === undefined) continue;
     metricValues[id] = value;
-    metricUnits[id] = summaries.find(summary => summary.metricUnits[id])?.metricUnits[id];
-    if (METRIC_IDS.some(metricId => metricId === id)) {
+    metricUnits[id] = summaries.find((summary) => summary.metricUnits[id])?.metricUnits[id];
+    if (METRIC_IDS.some((metricId) => metricId === id)) {
       metrics.push({
         id,
         value: formatNumericMetric(value, metricUnits[id]),
@@ -602,33 +567,46 @@ function medianSummary(summaries: LighthouseSummary[]): LighthouseSummary {
     }
   }
 
-  const auditIds = [...new Set(summaries.flatMap(summary => Object.keys(summary.auditScores)))];
+  const auditIds = [...new Set(summaries.flatMap((summary) => Object.keys(summary.auditScores)))];
   const auditScores: Record<string, number> = {};
   const auditTitles: Record<string, string> = {};
   const auditDisplayModes: Record<string, string | undefined> = {};
   for (const id of auditIds) {
-    const value = median(summaries.map(summary => summary.auditScores[id]).filter((score): score is number => typeof score === "number"));
+    const value = median(
+      summaries.map((summary) => summary.auditScores[id]).filter((score): score is number => typeof score === "number"),
+    );
     if (value === undefined) continue;
     auditScores[id] = value;
-    auditTitles[id] = summaries.find(summary => summary.auditTitles[id])?.auditTitles[id] ?? id;
-    auditDisplayModes[id] = summaries.find(summary => summary.auditDisplayModes[id])?.auditDisplayModes[id];
+    auditTitles[id] = summaries.find((summary) => summary.auditTitles[id])?.auditTitles[id] ?? id;
+    auditDisplayModes[id] = summaries.find((summary) => summary.auditDisplayModes[id])?.auditDisplayModes[id];
   }
   const failedAudits = Object.entries(auditScores)
-    .filter(([id, score]) => score < 1 && !["manual", "informative", "notApplicable", "error"].includes(auditDisplayModes[id] ?? ""))
-    .map(([id, score]) => ({id, title: auditTitles[id] ?? id, score}))
+    .filter(
+      ([id, score]) =>
+        score < 1 && !["manual", "informative", "notApplicable", "error"].includes(auditDisplayModes[id] ?? ""),
+    )
+    .map(([id, score]) => ({ id, title: auditTitles[id] ?? id, score }))
     .sort((a, b) => a.score - b.score || a.id.localeCompare(b.id));
-  const opportunityIds = [...new Set(summaries.flatMap(summary => summary.opportunities.map(opportunity => opportunity.id)))];
-  const opportunities = opportunityIds.map(id => {
-    const values = summaries.flatMap(summary => summary.opportunities.filter(item => item.id === id));
+  const opportunityIds = [
+    ...new Set(summaries.flatMap((summary) => summary.opportunities.map((opportunity) => opportunity.id))),
+  ];
+  const opportunities = opportunityIds.map((id) => {
+    const values = summaries.flatMap((summary) => summary.opportunities.filter((item) => item.id === id));
     return {
       id,
       title: values[0]?.title ?? id,
-      savingsMs: median(values.map(value => value.savingsMs).filter((value): value is number => typeof value === "number")),
-      savingsBytes: median(values.map(value => value.savingsBytes).filter((value): value is number => typeof value === "number")),
+      savingsMs: median(
+        values.map((value) => value.savingsMs).filter((value): value is number => typeof value === "number"),
+      ),
+      savingsBytes: median(
+        values.map((value) => value.savingsBytes).filter((value): value is number => typeof value === "number"),
+      ),
     };
   });
-  const warnings = [...new Set(summaries.flatMap(summary => summary.warnings))];
-  const timingMs = median(summaries.map(summary => summary.timingMs).filter((value): value is number => value !== undefined));
+  const warnings = [...new Set(summaries.flatMap((summary) => summary.warnings))];
+  const timingMs = median(
+    summaries.map((summary) => summary.timingMs).filter((value): value is number => value !== undefined),
+  );
 
   return {
     version: first.version,
@@ -645,7 +623,7 @@ function medianSummary(summaries: LighthouseSummary[]): LighthouseSummary {
     failedAudits,
     opportunities,
     warnings,
-    runtimeError: summaries.find(summary => summary.runtimeError)?.runtimeError,
+    runtimeError: summaries.find((summary) => summary.runtimeError)?.runtimeError,
     timingMs,
   };
 }
@@ -662,7 +640,14 @@ function evaluateThresholds(
     if (Object.prototype.hasOwnProperty.call(summary.categoryScores, categoryId)) {
       const score = summary.categoryScores[categoryId];
       const actual = typeof score === "number" ? score * 100 : undefined;
-      checks.push({key, actual, threshold, unit: "score", rule: "minimum", passed: actual !== undefined && actual >= threshold});
+      checks.push({
+        key,
+        actual,
+        threshold,
+        unit: "score",
+        rule: "minimum",
+        passed: actual !== undefined && actual >= threshold,
+      });
       continue;
     }
     if (Object.prototype.hasOwnProperty.call(summary.metricValues, metricId)) {
@@ -677,9 +662,9 @@ function evaluateThresholds(
       });
       continue;
     }
-    checks.push({key, threshold, unit: "unavailable", rule: "maximum", passed: false});
+    checks.push({ key, threshold, unit: "unavailable", rule: "maximum", passed: false });
   }
-  return {passed: checks.every(check => check.passed), checks, failures: checks.filter(check => !check.passed)};
+  return { passed: checks.every((check) => check.passed), checks, failures: checks.filter((check) => !check.passed) };
 }
 
 function formatThresholdReport(report: ThresholdReport | undefined): string[] {
@@ -707,11 +692,18 @@ function buildComparison(
     const candidateValue = candidate.categoryScores[id];
     const point: ComparisonPoint = {
       id,
-      title: candidate.scores.find(score => score.id === id)?.title ?? baseline.scores.find(score => score.id === id)?.title ?? id,
+      title:
+        candidate.scores.find((score) => score.id === id)?.title ??
+        baseline.scores.find((score) => score.id === id)?.title ??
+        id,
       baseline: typeof baselineValue === "number" ? baselineValue * 100 : undefined,
       candidate: typeof candidateValue === "number" ? candidateValue * 100 : undefined,
       unit: "score",
-      regression: detectRegressions && typeof baselineValue === "number" && typeof candidateValue === "number" && candidateValue < baselineValue,
+      regression:
+        detectRegressions &&
+        typeof baselineValue === "number" &&
+        typeof candidateValue === "number" &&
+        candidateValue < baselineValue,
     };
     if (point.baseline !== undefined && point.candidate !== undefined) point.delta = point.candidate - point.baseline;
     scores.push(point);
@@ -722,10 +714,11 @@ function buildComparison(
   for (const id of metricIds) {
     const baselineValue = baseline.metricValues[id];
     const candidateValue = candidate.metricValues[id];
-    const delta = baselineValue !== undefined && candidateValue !== undefined ? candidateValue - baselineValue : undefined;
+    const delta =
+      baselineValue !== undefined && candidateValue !== undefined ? candidateValue - baselineValue : undefined;
     metrics.push({
       id,
-      title: candidate.metrics.find(metric => metric.id === id)?.id ?? id,
+      title: candidate.metrics.find((metric) => metric.id === id)?.id ?? id,
       baseline: baselineValue,
       candidate: candidateValue,
       delta,
@@ -741,8 +734,8 @@ function buildComparison(
     const metricOnly = /^(metric|metrics)\./.test(key);
     const categoryId = key.replace(/^(category|categories)\./, "");
     const metricId = key.replace(/^(metric|metrics)\./, "");
-    let point = metricOnly ? undefined : scores.find(candidatePoint => candidatePoint.id === categoryId);
-    if (!point && !categoryOnly) point = metrics.find(candidatePoint => candidatePoint.id === metricId);
+    let point = metricOnly ? undefined : scores.find((candidatePoint) => candidatePoint.id === categoryId);
+    if (!point && !categoryOnly) point = metrics.find((candidatePoint) => candidatePoint.id === metricId);
 
     if (!point) {
       thresholdFailures.push({
@@ -757,13 +750,15 @@ function buildComparison(
     }
 
     const comparable = point.baseline !== undefined && point.candidate !== undefined && point.delta !== undefined;
-    const withinRegressionThreshold = comparable && (!point.regression || Math.abs(point.delta ?? 0) <= allowedRegression);
+    const withinRegressionThreshold =
+      comparable && (!point.regression || Math.abs(point.delta ?? 0) <= allowedRegression);
     point.allowedRegression ??= allowedRegression;
-    point.withinRegressionThreshold = point.withinRegressionThreshold === undefined
-      ? withinRegressionThreshold
-      : point.withinRegressionThreshold && withinRegressionThreshold;
+    point.withinRegressionThreshold =
+      point.withinRegressionThreshold === undefined
+        ? withinRegressionThreshold
+        : point.withinRegressionThreshold && withinRegressionThreshold;
     if (!withinRegressionThreshold) {
-      thresholdFailures.push({...point, id: key, allowedRegression, withinRegressionThreshold});
+      thresholdFailures.push({ ...point, id: key, allowedRegression, withinRegressionThreshold });
     }
   }
 
@@ -773,8 +768,8 @@ function buildComparison(
     detectRegressions,
     scores,
     metrics,
-    differences: points.filter(point => point.delta !== undefined && point.delta !== 0),
-    regressions: points.filter(point => point.regression),
+    differences: points.filter((point) => point.delta !== undefined && point.delta !== 0),
+    regressions: points.filter((point) => point.regression),
     thresholdFailures,
   };
 }
@@ -790,49 +785,62 @@ function formatComparison(comparison: ReportComparison): string {
     `Comparison: ${comparison.baselineLabel} → ${comparison.candidateLabel}`,
     "",
     "Scores:",
-    ...comparison.scores.map(point =>
-      `- ${point.title}: ${formatComparisonValue(point.baseline, point.unit)} → ${formatComparisonValue(point.candidate, point.unit)} (${point.delta === undefined ? "n/a" : `${point.delta >= 0 ? "+" : ""}${point.delta.toFixed(1)} pts`})${point.regression ? " REGRESSION" : ""}`
+    ...comparison.scores.map(
+      (point) =>
+        `- ${point.title}: ${formatComparisonValue(point.baseline, point.unit)} → ${formatComparisonValue(point.candidate, point.unit)} (${point.delta === undefined ? "n/a" : `${point.delta >= 0 ? "+" : ""}${point.delta.toFixed(1)} pts`})${point.regression ? " REGRESSION" : ""}`,
     ),
   ];
   if (comparison.metrics.length > 0) {
-    lines.push("", "Metrics:", ...comparison.metrics.map(point =>
-      `- ${point.id}: ${formatComparisonValue(point.baseline, point.unit)} → ${formatComparisonValue(point.candidate, point.unit)} (${point.delta === undefined ? "n/a" : `${point.delta >= 0 ? "+" : ""}${formatNumericMetric(point.delta, point.unit)}`})${point.regression ? " REGRESSION" : ""}`
-    ));
+    lines.push(
+      "",
+      "Metrics:",
+      ...comparison.metrics.map(
+        (point) =>
+          `- ${point.id}: ${formatComparisonValue(point.baseline, point.unit)} → ${formatComparisonValue(point.candidate, point.unit)} (${point.delta === undefined ? "n/a" : `${point.delta >= 0 ? "+" : ""}${formatNumericMetric(point.delta, point.unit)}`})${point.regression ? " REGRESSION" : ""}`,
+      ),
+    );
   }
-  const comparisonCount = comparison.detectRegressions
-    ? comparison.regressions.length
-    : comparison.differences.length;
+  const comparisonCount = comparison.detectRegressions ? comparison.regressions.length : comparison.differences.length;
   lines.push("", `${comparison.detectRegressions ? "Regressions" : "Differences"}: ${comparisonCount}`);
   if (comparison.thresholdFailures.length > 0) {
-    lines.push("", "Regression threshold failures:", ...comparison.thresholdFailures.map(point =>
-      point.baseline === undefined || point.candidate === undefined || point.delta === undefined
-        ? `- ${point.id}: unavailable or unknown (allowed degradation ${point.allowedRegression} ${point.unit})`
-        : `- ${point.id}: degradation ${formatNumericMetric(Math.abs(point.delta), point.unit)} > allowed ${point.allowedRegression} ${point.unit}`
-    ));
+    lines.push(
+      "",
+      "Regression threshold failures:",
+      ...comparison.thresholdFailures.map((point) =>
+        point.baseline === undefined || point.candidate === undefined || point.delta === undefined
+          ? `- ${point.id}: unavailable or unknown (allowed degradation ${point.allowedRegression} ${point.unit})`
+          : `- ${point.id}: degradation ${formatNumericMetric(Math.abs(point.delta), point.unit)} > allowed ${point.allowedRegression} ${point.unit}`,
+      ),
+    );
   }
   return truncateText(lines.join("\n"), MAX_SUMMARY_BYTES);
 }
 
-function formatSummary(summary: LighthouseSummary, reportPath?: string, artifactPaths: string[] = [], thresholdReport?: ThresholdReport): string {
+function formatSummary(
+  summary: LighthouseSummary,
+  reportPath?: string,
+  artifactPaths: string[] = [],
+  thresholdReport?: ThresholdReport,
+): string {
   const lines = [
     `Lighthouse ${summary.version ?? "completed"}`,
     summary.url ? `URL: ${summary.url}` : "",
     "",
     "Scores:",
-    ...summary.scores.map(category => `- ${category.title}: ${category.score}`),
+    ...summary.scores.map((category) => `- ${category.title}: ${category.score}`),
   ];
 
   if (summary.metrics.length > 0) {
-    lines.push("", "Metrics:", ...summary.metrics.map(metric => `- ${metric.id}: ${metric.value}`));
+    lines.push("", "Metrics:", ...summary.metrics.map((metric) => `- ${metric.id}: ${metric.value}`));
   }
 
   if (summary.failedAudits.length > 0) {
     lines.push(
       "",
       `Failed audits (${summary.failedAudits.length}):`,
-      ...summary.failedAudits.slice(0, 25).map(audit =>
-        `- ${audit.id}: ${audit.title}${audit.displayValue ? ` (${audit.displayValue})` : ""}`
-      ),
+      ...summary.failedAudits
+        .slice(0, 25)
+        .map((audit) => `- ${audit.id}: ${audit.title}${audit.displayValue ? ` (${audit.displayValue})` : ""}`),
     );
     if (summary.failedAudits.length > 25) lines.push("- … additional failures are in the JSON report");
   }
@@ -841,25 +849,30 @@ function formatSummary(summary: LighthouseSummary, reportPath?: string, artifact
     lines.push(
       "",
       "Top opportunities:",
-      ...summary.opportunities.slice(0, 10).map(opportunity => {
+      ...summary.opportunities.slice(0, 10).map((opportunity) => {
         const savings = [
           opportunity.savingsMs !== undefined ? `${Math.round(opportunity.savingsMs)} ms` : "",
           opportunity.savingsBytes !== undefined ? `${Math.round(opportunity.savingsBytes / 1024)} KiB` : "",
-        ].filter(Boolean).join(", ");
+        ]
+          .filter(Boolean)
+          .join(", ");
         return `- ${opportunity.id}: ${opportunity.title}${savings ? ` (${savings})` : ""}`;
       }),
     );
   }
 
   if (summary.warnings.length > 0) {
-    lines.push("", "Warnings:", ...summary.warnings.map(warning => `- ${warning}`));
+    lines.push("", "Warnings:", ...summary.warnings.map((warning) => `- ${warning}`));
   }
   if (summary.timingMs !== undefined) lines.push("", `Run time: ${Math.round(summary.timingMs)} ms`);
   lines.push(...formatThresholdReport(thresholdReport));
   if (reportPath) lines.push("", `Report: ${reportPath}`);
-  if (artifactPaths.length > 0) lines.push("", "Artifacts:", ...artifactPaths.map(path => `- ${path}`));
+  if (artifactPaths.length > 0) lines.push("", "Artifacts:", ...artifactPaths.map((path) => `- ${path}`));
 
-  return truncateText(lines.filter((line, index) => line !== "" || lines[index - 1] !== "").join("\n"), MAX_SUMMARY_BYTES);
+  return truncateText(
+    lines.filter((line, index) => line !== "" || lines[index - 1] !== "").join("\n"),
+    MAX_SUMMARY_BYTES,
+  );
 }
 
 async function prepareRun(
@@ -868,9 +881,12 @@ async function prepareRun(
   ctx: ExtensionContext,
   sharedCdpEndpoint?: string,
 ): Promise<PreparedRun> {
-  const options = {...(params.options ?? {})} as Record<string, OptionValue>;
+  const options = { ...params.options } as Record<string, OptionValue>;
   const configuredHostname = getOption(options, ["hostname"]);
-  if (typeof configuredHostname === "string" && !["127.0.0.1", "localhost", "::1", "[::1]"].includes(configuredHostname)) {
+  if (
+    typeof configuredHostname === "string" &&
+    !["127.0.0.1", "localhost", "::1", "[::1]"].includes(configuredHostname)
+  ) {
     throw new Error("Lighthouse debugging host must be local.");
   }
   if (sharedCdpEndpoint && ["run", "gather", "audit"].includes(params.action)) {
@@ -881,9 +897,16 @@ async function prepareRun(
     }
   }
   for (const optionName of [
-    "config-path", "configPath", "cli-flags-path", "cliFlagsPath",
-    "precomputed-lantern-data-path", "precomputedLanternDataPath",
-    "extra-headers-path", "extraHeadersPath", "audit-mode", "auditMode",
+    "config-path",
+    "configPath",
+    "cli-flags-path",
+    "cliFlagsPath",
+    "precomputed-lantern-data-path",
+    "precomputedLanternDataPath",
+    "extra-headers-path",
+    "extraHeadersPath",
+    "audit-mode",
+    "auditMode",
   ]) {
     const value = options[optionName];
     if (typeof value === "string" && value.trim()) options[optionName] = resolveUserPath(value, ctx.cwd);
@@ -895,21 +918,33 @@ async function prepareRun(
     }
   }
   const inputOptionNames = [
-    "config-path", "configPath", "cli-flags-path", "cliFlagsPath",
-    "precomputed-lantern-data-path", "precomputedLanternDataPath",
-    "extra-headers-path", "extraHeadersPath", "audit-mode", "auditMode",
-    "extra-headers", "extraHeaders",
+    "config-path",
+    "configPath",
+    "cli-flags-path",
+    "cliFlagsPath",
+    "precomputed-lantern-data-path",
+    "precomputedLanternDataPath",
+    "extra-headers-path",
+    "extraHeadersPath",
+    "audit-mode",
+    "auditMode",
+    "extra-headers",
+    "extraHeaders",
   ];
-  await Promise.all(inputOptionNames.flatMap(name => {
-    const value = options[name];
-    return typeof value === "string" && resolve(value) === value ? [value] : [];
-  }).map(async path => {
-    try {
-      await access(path);
-    } catch {
-      throw new Error(`Lighthouse input path is not readable: ${path}`);
-    }
-  }));
+  await Promise.all(
+    inputOptionNames
+      .flatMap((name) => {
+        const value = options[name];
+        return typeof value === "string" && resolve(value) === value ? [value] : [];
+      })
+      .map(async (path) => {
+        try {
+          await access(path);
+        } catch {
+          throw new Error(`Lighthouse input path is not readable: ${path}`);
+        }
+      }),
+  );
   const args: string[] = [];
   const action = params.action as Action;
   let tempDirectory: string | undefined;
@@ -954,16 +989,23 @@ async function prepareRun(
 
   if (!hasOption(options, ["enable-error-reporting", "enableErrorReporting"])) args.push("--no-enable-error-reporting");
   if (!hasOption(options, ["quiet"]) && !hasOption(options, ["verbose"])) args.push("--quiet");
-  if (!hasOption(options, ["chrome-flags", "chromeFlags"]) && (action === "run" || action === "gather" || action === "audit")) {
+  if (
+    !hasOption(options, ["chrome-flags", "chromeFlags"]) &&
+    (action === "run" || action === "gather" || action === "audit")
+  ) {
     args.push("--chrome-flags=--headless=new");
   }
 
   const optionHasOutput = hasOption(options, ["output"]);
   const outputFormats = asOutputFormats(params.output ?? getOption(options, ["output"]));
-  const effectiveOutputFormats = outputFormats.length > 0
-    ? outputFormats
-    : (action === "run" || action === "audit" ? ["json" as OutputFormat] : undefined);
-  if ((action === "run" || action === "audit") && params.output !== undefined) appendOption(args, "output", params.output);
+  const effectiveOutputFormats =
+    outputFormats.length > 0
+      ? outputFormats
+      : action === "run" || action === "audit"
+        ? ["json" as OutputFormat]
+        : undefined;
+  if ((action === "run" || action === "audit") && params.output !== undefined)
+    appendOption(args, "output", params.output);
   else if ((action === "run" || action === "audit") && !optionHasOutput) appendOption(args, "output", "json");
 
   {
@@ -975,29 +1017,38 @@ async function prepareRun(
     }
   }
 
-  if (args.some(arg => arg.startsWith("--lantern-data-output-path=") || arg.startsWith("--lanternDataOutputPath="))) {
-    additionalPaths.push(await redirectOutputOption(
-      args,
-      ["lantern-data-output-path", "lanternDataOutputPath"],
-      runtime,
-      ctx,
-      "lighthouse",
-      "lantern-data.json",
-    ));
+  if (args.some((arg) => arg.startsWith("--lantern-data-output-path=") || arg.startsWith("--lanternDataOutputPath="))) {
+    additionalPaths.push(
+      await redirectOutputOption(
+        args,
+        ["lantern-data-output-path", "lanternDataOutputPath"],
+        runtime,
+        ctx,
+        "lighthouse",
+        "lantern-data.json",
+      ),
+    );
   }
 
   if (action === "run" || action === "audit") {
     const formats = effectiveOutputFormats ?? ["json" as OutputFormat];
     if (params.outputPath !== undefined) args.push(`--output-path=${params.outputPath}`);
-    const outputOption = args.find(arg => arg.startsWith("--output-path=") || arg.startsWith("--outputPath="));
+    const outputOption = args.find((arg) => arg.startsWith("--output-path=") || arg.startsWith("--outputPath="));
     if (outputOption?.endsWith("=stdout")) {
       reportPath = undefined;
     } else {
       const defaultName = formats.length === 1 ? `lighthouse-report.${formats[0]}` : "lighthouse-report";
-      const allocated = await redirectOutputOption(args, ["output-path", "outputPath"], runtime, ctx, "lighthouse", defaultName);
+      const allocated = await redirectOutputOption(
+        args,
+        ["output-path", "outputPath"],
+        runtime,
+        ctx,
+        "lighthouse",
+        defaultName,
+      );
       if (allocated !== "stdout") {
         reportPaths = outputPathsForFormats(allocated, formats);
-        reportPath = reportPaths.find(path => path.endsWith(".json")) ?? reportPaths[0];
+        reportPath = reportPaths.find((path) => path.endsWith(".json")) ?? reportPaths[0];
         if (optionEnabled(getOption(options, ["save-assets", "saveAssets"]))) {
           assetPrefix = stripKnownExtension(allocated);
         }
@@ -1005,12 +1056,21 @@ async function prepareRun(
     }
   }
 
-  return {args, outputFormats: effectiveOutputFormats, reportPath, reportPaths, additionalPaths, artifactPath, tempDirectory, assetPrefix};
+  return {
+    args,
+    outputFormats: effectiveOutputFormats,
+    reportPath,
+    reportPaths,
+    additionalPaths,
+    artifactPath,
+    tempDirectory,
+    assetPrefix,
+  };
 }
 
 function withoutReportOptions(options: LighthouseParams["options"]): Record<string, OptionValue> | undefined {
   if (!options) return undefined;
-  const copy = {...options} as Record<string, OptionValue>;
+  const copy = { ...options } as Record<string, OptionValue>;
   for (const name of ["output", "outputPath", "output-path"]) delete copy[name];
   return Object.keys(copy).length > 0 ? copy : undefined;
 }
@@ -1019,7 +1079,12 @@ function withoutDeviceOptions(options: LighthouseParams["options"]): Record<stri
   const copy = withoutReportOptions(options);
   if (!copy) return undefined;
   for (const name of Object.keys(copy)) {
-    if (["preset", "formFactor", "form-factor", "emulatedUserAgent", "emulated-user-agent"].includes(name) || name === "screenEmulation" || name.startsWith("screenEmulation.") || name.startsWith("screen-emulation.")) {
+    if (
+      ["preset", "formFactor", "form-factor", "emulatedUserAgent", "emulated-user-agent"].includes(name) ||
+      name === "screenEmulation" ||
+      name.startsWith("screenEmulation.") ||
+      name.startsWith("screen-emulation.")
+    ) {
       delete copy[name];
     }
   }
@@ -1028,7 +1093,7 @@ function withoutDeviceOptions(options: LighthouseParams["options"]): Record<stri
 
 function thresholdFailure(details: LighthouseDetails): boolean {
   if (details.thresholdReport && !details.thresholdReport.passed) return true;
-  if (details.thresholdReports && Object.values(details.thresholdReports).some(report => !report.passed)) return true;
+  if (details.thresholdReports && Object.values(details.thresholdReports).some((report) => !report.passed)) return true;
   if (details.comparison?.thresholdFailures.length) return true;
   return false;
 }
@@ -1044,11 +1109,15 @@ async function executeSingleAction(
   const workspace = await runtime.ensure(ctx);
   const browserState = await runtime.state(ctx);
   const prepared = await prepareRun(runtime, params, ctx, browserState.sharedCdpEndpoint);
-  if (params.thresholds && (params.action === "run" || params.action === "audit") && !prepared.outputFormats?.includes("json")) {
+  if (
+    params.thresholds &&
+    (params.action === "run" || params.action === "audit") &&
+    !prepared.outputFormats?.includes("json")
+  ) {
     throw new Error("thresholds require output=json so Lighthouse results can be evaluated.");
   }
-  const redactedArgs = prepared.args.map(redactSecrets);
-  const cliCommand = commandLabel(redactedArgs);
+  const redactedArgs = prepared.args.map((arg) => redactSecrets(arg));
+  const cliCommand = commandLabel("lighthouse", prepared.args);
   const result = await runtime.exec(pi, "lighthouse", prepared.args, ctx, {
     signal,
     timeout: params.timeoutMs ?? DEFAULT_TIMEOUT,
@@ -1065,15 +1134,22 @@ async function executeSingleAction(
     correlationId,
     url: params.url,
   });
-  const reportedPaths = resolveReportedPaths(workspace.root, extractArtifactPaths(`${stdout}\n${stderr}`));
-  reportedPaths.unshift(...prepared.reportPaths, ...prepared.additionalPaths, ...await outputAssetsForPrefix(prepared.assetPrefix));
+  const reportedPaths = resolveReportedPaths(
+    workspace.root,
+    extractArtifactPathsByExtension(`${stdout}\n${stderr}`, ARTIFACT_EXTENSIONS, { gzip: true }),
+  );
+  reportedPaths.unshift(
+    ...prepared.reportPaths,
+    ...prepared.additionalPaths,
+    ...(await outputAssetsForPrefix(prepared.assetPrefix)),
+  );
   if (prepared.artifactPath && params.action === "gather") reportedPaths.unshift(prepared.artifactPath);
   if (prepared.tempDirectory) reportedPaths.unshift(prepared.tempDirectory);
   const records = await runtime.record(ctx, "lighthouse", [...new Set(reportedPaths)], "report", {
     correlationId,
     url: params.url,
   });
-  const uniqueArtifacts = records.map(record => record.path);
+  const uniqueArtifacts = records.map((record) => record.path);
   if (formattedOutput.fullOutputPath) uniqueArtifacts.push(formattedOutput.fullOutputPath);
 
   if (result.code !== 0 || result.killed) {
@@ -1103,9 +1179,7 @@ async function executeSingleAction(
     : formattedOutput.text || `${params.action} completed.`;
 
   const artifactIds = await artifactIdsForPaths(runtime, ctx, uniqueArtifacts);
-  const reportId = prepared.reportPath
-    ? records.find(record => record.path === prepared.reportPath)?.id
-    : undefined;
+  const reportId = prepared.reportPath ? records.find((record) => record.path === prepared.reportPath)?.id : undefined;
   const details: LighthouseDetails = {
     backend: "lighthouse",
     operation: params.action as Action,
@@ -1130,7 +1204,7 @@ async function executeSingleAction(
     stderr: truncateText(stderr, MAX_DETAIL_OUTPUT_BYTES, MAX_DETAIL_OUTPUT_LINES),
   };
 
-  return {lhr, summary, result: {text, details}};
+  return { lhr, summary, result: { text, details } };
 }
 
 async function executeRepeatedRuns(
@@ -1142,7 +1216,8 @@ async function executeRepeatedRuns(
   correlationId?: string,
 ): Promise<ActionResult> {
   const count = params.repeatRuns ?? 1;
-  if (!Number.isInteger(count) || count < 1 || count > 10) throw new Error("repeatRuns must be an integer from 1 to 10.");
+  if (!Number.isInteger(count) || count < 1 || count > 10)
+    throw new Error("repeatRuns must be an integer from 1 to 10.");
   const runParams = {
     ...params,
     action: "run" as const,
@@ -1152,13 +1227,25 @@ async function executeRepeatedRuns(
   };
   const executions: SingleExecution[] = [];
   for (let index = 0; index < count; index++) {
-    executions.push(await executeSingleAction(pi, runtime, runParams, ctx, signal, `${correlationId ?? "lighthouse"}:run-${index + 1}`));
+    executions.push(
+      await executeSingleAction(
+        pi,
+        runtime,
+        runParams,
+        ctx,
+        signal,
+        `${correlationId ?? "lighthouse"}:run-${index + 1}`,
+      ),
+    );
   }
-  const summaries = executions.map(execution => execution.summary).filter((summary): summary is LighthouseSummary => summary !== undefined);
-  if (summaries.length !== count) throw new Error("Repeated Lighthouse runs did not produce JSON reports for median calculation.");
+  const summaries = executions
+    .map((execution) => execution.summary)
+    .filter((summary): summary is LighthouseSummary => summary !== undefined);
+  if (summaries.length !== count)
+    throw new Error("Repeated Lighthouse runs did not produce JSON reports for median calculation.");
   const summary = medianSummary(summaries);
   const thresholdReport = evaluateThresholds(summary, params.thresholds);
-  const artifactPaths = [...new Set(executions.flatMap(execution => execution.result.details.artifactPaths))];
+  const artifactPaths = [...new Set(executions.flatMap((execution) => execution.result.details.artifactPaths))];
   const text = `${formatSummary(summary, undefined, artifactPaths, thresholdReport)}\n\nRuns: ${count} (median values)`;
   const artifactIds = await artifactIdsForPaths(runtime, ctx, artifactPaths);
   const browserState = await runtime.state(ctx);
@@ -1167,7 +1254,7 @@ async function executeRepeatedRuns(
     operation: "run",
     url: summary.url,
     artifactIds,
-    truncated: executions.some(execution => execution.result.details.truncated),
+    truncated: executions.some((execution) => execution.result.details.truncated),
     handoff: browserState.sharedCdpEndpoint ? "shared-cdp" : "url-artifact-only",
     correlationId,
     action: "run",
@@ -1179,7 +1266,7 @@ async function executeRepeatedRuns(
     summary,
     repeatedRuns: count,
     thresholdReport,
-    runDetails: executions.map(execution => ({
+    runDetails: executions.map((execution) => ({
       url: execution.summary?.url,
       artifactIds: execution.result.details.artifactIds,
       reportId: execution.result.details.reportId,
@@ -1192,7 +1279,7 @@ async function executeRepeatedRuns(
     stdout: "",
     stderr: "",
   };
-  return {text, details};
+  return { text, details };
 }
 
 async function executeDeviceComparison(
@@ -1205,23 +1292,38 @@ async function executeDeviceComparison(
 ): Promise<ActionResult> {
   if (!params.url) throw new Error("compare_devices requires a URL.");
   const count = params.repeatRuns ?? 1;
-  if (!Number.isInteger(count) || count < 1 || count > 10) throw new Error("repeatRuns must be an integer from 1 to 10.");
+  if (!Number.isInteger(count) || count < 1 || count > 10)
+    throw new Error("repeatRuns must be an integer from 1 to 10.");
   const baseOptions = withoutDeviceOptions(params.options);
-  const deviceResults: Record<string, SingleExecution[]> = {mobile: [], desktop: []};
+  const deviceResults: Record<string, SingleExecution[]> = { mobile: [], desktop: [] };
   for (const device of ["mobile", "desktop"] as const) {
     for (let index = 0; index < count; index++) {
-      deviceResults[device].push(await executeSingleAction(pi, runtime, {
-        ...params,
-        action: "run",
-        output: "json",
-        outputPath: undefined,
-        options: device === "desktop" ? {...baseOptions, preset: "desktop"} : baseOptions,
-      }, ctx, signal, `${correlationId ?? "lighthouse"}:${device}-${index + 1}`));
+      deviceResults[device].push(
+        await executeSingleAction(
+          pi,
+          runtime,
+          {
+            ...params,
+            action: "run",
+            output: "json",
+            outputPath: undefined,
+            options: device === "desktop" ? { ...baseOptions, preset: "desktop" } : baseOptions,
+          },
+          ctx,
+          signal,
+          `${correlationId ?? "lighthouse"}:${device}-${index + 1}`,
+        ),
+      );
     }
   }
-  const mobileSummaries = deviceResults.mobile.map(execution => execution.summary).filter((summary): summary is LighthouseSummary => summary !== undefined);
-  const desktopSummaries = deviceResults.desktop.map(execution => execution.summary).filter((summary): summary is LighthouseSummary => summary !== undefined);
-  if (mobileSummaries.length !== count || desktopSummaries.length !== count) throw new Error("Device comparison did not produce JSON reports for median calculation.");
+  const mobileSummaries = deviceResults.mobile
+    .map((execution) => execution.summary)
+    .filter((summary): summary is LighthouseSummary => summary !== undefined);
+  const desktopSummaries = deviceResults.desktop
+    .map((execution) => execution.summary)
+    .filter((summary): summary is LighthouseSummary => summary !== undefined);
+  if (mobileSummaries.length !== count || desktopSummaries.length !== count)
+    throw new Error("Device comparison did not produce JSON reports for median calculation.");
   const mobile = medianSummary(mobileSummaries);
   const desktop = medianSummary(desktopSummaries);
   const comparison = buildComparison(mobile, desktop, "mobile", "desktop", undefined, false);
@@ -1229,7 +1331,13 @@ async function executeDeviceComparison(
     mobile: evaluateThresholds(mobile, params.thresholds),
     desktop: evaluateThresholds(desktop, params.thresholds),
   };
-  const artifactPaths = [...new Set(Object.values(deviceResults).flatMap(results => results.flatMap(execution => execution.result.details.artifactPaths)))];
+  const artifactPaths = [
+    ...new Set(
+      Object.values(deviceResults).flatMap((results) =>
+        results.flatMap((execution) => execution.result.details.artifactPaths),
+      ),
+    ),
+  ];
   const text = `${formatComparison(comparison)}\n\nMobile median:\n${formatSummary(mobile, undefined, [], thresholdReports.mobile)}\n\nDesktop median:\n${formatSummary(desktop, undefined, [], thresholdReports.desktop)}`;
   const artifactIds = await artifactIdsForPaths(runtime, ctx, artifactPaths);
   const browserState = await runtime.state(ctx);
@@ -1238,7 +1346,9 @@ async function executeDeviceComparison(
     operation: "compare_devices",
     url: params.url,
     artifactIds,
-    truncated: Object.values(deviceResults).some(results => results.some(execution => execution.result.details.truncated)),
+    truncated: Object.values(deviceResults).some((results) =>
+      results.some((execution) => execution.result.details.truncated),
+    ),
     handoff: browserState.sharedCdpEndpoint ? "shared-cdp" : "url-artifact-only",
     correlationId,
     action: "compare_devices",
@@ -1248,22 +1358,26 @@ async function executeDeviceComparison(
     outputFormat: "json",
     artifactPaths,
     repeatedRuns: count,
-    thresholdReports: Object.fromEntries(Object.entries(thresholdReports).filter((entry): entry is [string, ThresholdReport] => entry[1] !== undefined)),
+    thresholdReports: Object.fromEntries(
+      Object.entries(thresholdReports).filter((entry): entry is [string, ThresholdReport] => entry[1] !== undefined),
+    ),
     comparison,
-    runDetails: Object.values(deviceResults).flatMap(results => results.map(execution => ({
-      url: execution.summary?.url,
-      artifactIds: execution.result.details.artifactIds,
-      reportId: execution.result.details.reportId,
-      scores: execution.summary?.categoryScores,
-      metrics: execution.summary?.metricValues,
-      warnings: execution.summary?.warnings,
-      runtimeError: execution.summary?.runtimeError,
-      timingMs: execution.summary?.timingMs,
-    }))),
+    runDetails: Object.values(deviceResults).flatMap((results) =>
+      results.map((execution) => ({
+        url: execution.summary?.url,
+        artifactIds: execution.result.details.artifactIds,
+        reportId: execution.result.details.reportId,
+        scores: execution.summary?.categoryScores,
+        metrics: execution.summary?.metricValues,
+        warnings: execution.summary?.warnings,
+        runtimeError: execution.summary?.runtimeError,
+        timingMs: execution.summary?.timingMs,
+      })),
+    ),
     stdout: "",
     stderr: "",
   };
-  return {text, details};
+  return { text, details };
 }
 
 async function readLighthouseSummary(path: string, cwd: string): Promise<LighthouseSummary> {
@@ -1279,10 +1393,11 @@ async function executeReportComparison(
   ctx: ExtensionContext,
   correlationId?: string,
 ): Promise<ActionResult> {
-  if (!params.baselinePath || !params.candidatePath) throw new Error("compare_reports requires baselinePath and candidatePath.");
+  if (!params.baselinePath || !params.candidatePath)
+    throw new Error("compare_reports requires baselinePath and candidatePath.");
   const manifest = await runtime.manifest(ctx);
   const resolveReportReference = (reference: string): string =>
-    manifest.artifacts.find(artifact => artifact.id === reference)?.path || resolveUserPath(reference, ctx.cwd);
+    manifest.artifacts.find((artifact) => artifact.id === reference)?.path || resolveUserPath(reference, ctx.cwd);
   const baselinePath = resolveReportReference(params.baselinePath);
   const candidatePath = resolveReportReference(params.candidatePath);
   const [baseline, candidate] = await Promise.all([
@@ -1311,7 +1426,7 @@ async function executeReportComparison(
     stdout: "",
     stderr: "",
   };
-  return {text, details};
+  return { text, details };
 }
 
 async function executeAction(
@@ -1322,10 +1437,16 @@ async function executeAction(
   signal?: AbortSignal,
   correlationId?: string,
 ): Promise<ActionResult> {
-  if (params.repeatRuns !== undefined && (!Number.isInteger(params.repeatRuns) || params.repeatRuns < 1 || params.repeatRuns > 10)) {
+  if (
+    params.repeatRuns !== undefined &&
+    (!Number.isInteger(params.repeatRuns) || params.repeatRuns < 1 || params.repeatRuns > 10)
+  ) {
     throw new Error("repeatRuns must be an integer from 1 to 10.");
   }
-  if (params.regressionThresholds && Object.values(params.regressionThresholds).some(value => !Number.isFinite(value) || value < 0)) {
+  if (
+    params.regressionThresholds &&
+    Object.values(params.regressionThresholds).some((value) => !Number.isFinite(value) || value < 0)
+  ) {
     throw new Error("regressionThresholds must contain finite, non-negative numbers.");
   }
   let result: ActionResult;
@@ -1356,17 +1477,23 @@ export function registerLighthouse(pi: ExtensionAPI, runtime: BrowserRuntime): v
       try {
         result = await executeAction(pi, runtime, params, ctx, signal, toolCallId);
       } catch (error) {
-        const artifacts = await runtime.manifest(ctx).then(manifest => manifest.artifacts.filter(artifact =>
-          artifact.correlationId === toolCallId || artifact.correlationId?.startsWith(`${toolCallId}:`)
-        )).catch(() => []);
+        const artifacts = await runtime
+          .manifest(ctx)
+          .then((manifest) =>
+            manifest.artifacts.filter(
+              (artifact) =>
+                artifact.correlationId === toolCallId || artifact.correlationId?.startsWith(`${toolCallId}:`),
+            ),
+          )
+          .catch(() => []);
         await runtime.recordEvidence(ctx, {
           backend: "lighthouse",
           operation: params.action,
           status: "failed",
           summary: error instanceof Error ? error.message : String(error),
           url: params.url,
-          artifactIds: artifacts.map(artifact => artifact.id),
-          reportId: artifacts.find(artifact => artifact.kind === "report")?.id,
+          artifactIds: artifacts.map((artifact) => artifact.id),
+          reportId: artifacts.find((artifact) => artifact.kind === "report")?.id,
           correlationId: toolCallId,
         });
         throw error;
@@ -1382,15 +1509,17 @@ export function registerLighthouse(pi: ExtensionAPI, runtime: BrowserRuntime): v
         reportId: result.details.reportId,
         correlationId: toolCallId,
         data: {
-          summary: result.details.summary ? {
-            scores: result.details.summary.scores,
-            metrics: result.details.summary.metrics,
-            failedAudits: result.details.summary.failedAudits.slice(0, 25),
-            opportunities: result.details.summary.opportunities.slice(0, 10),
-            warnings: result.details.summary.warnings,
-            runtimeError: result.details.summary.runtimeError,
-            timingMs: result.details.summary.timingMs,
-          } : undefined,
+          summary: result.details.summary
+            ? {
+                scores: result.details.summary.scores,
+                metrics: result.details.summary.metrics,
+                failedAudits: result.details.summary.failedAudits.slice(0, 25),
+                opportunities: result.details.summary.opportunities.slice(0, 10),
+                warnings: result.details.summary.warnings,
+                runtimeError: result.details.summary.runtimeError,
+                timingMs: result.details.summary.timingMs,
+              }
+            : undefined,
           comparison: result.details.comparison,
           thresholdReport: result.details.thresholdReport,
           thresholdReports: result.details.thresholdReports,
@@ -1401,7 +1530,7 @@ export function registerLighthouse(pi: ExtensionAPI, runtime: BrowserRuntime): v
         throw new Error(`${result.text}\n\nThreshold enforcement failed.`);
       }
       return {
-        content: [{type: "text", text: result.text}],
+        content: [{ type: "text", text: result.text }],
         details: result.details,
       };
     },
@@ -1415,7 +1544,7 @@ export function registerLighthouse(pi: ExtensionAPI, runtime: BrowserRuntime): v
       if (!details) return new Text(theme.fg("muted", "Lighthouse finished"), 0, 0);
       const lines = [`✓ ${details.action}`];
       if (details.summary?.scores.length) {
-        lines.push(details.summary.scores.map(category => `${category.title}: ${category.score}`).join(" · "));
+        lines.push(details.summary.scores.map((category) => `${category.title}: ${category.score}`).join(" · "));
       }
       if (details.comparison) {
         const label = details.comparison.detectRegressions ? "regressions" : "differences";
@@ -1426,7 +1555,7 @@ export function registerLighthouse(pi: ExtensionAPI, runtime: BrowserRuntime): v
       }
       if (details.thresholdReport) lines.push(`thresholds: ${details.thresholdReport.passed ? "PASS" : "FAIL"}`);
       if (details.thresholdReports) {
-        const passed = Object.values(details.thresholdReports).every(report => report.passed);
+        const passed = Object.values(details.thresholdReports).every((report) => report.passed);
         lines.push(`thresholds: ${passed ? "PASS" : "FAIL"}`);
       }
       if (details.reportPath) lines.push(`report: ${details.reportPath}`);
@@ -1434,6 +1563,4 @@ export function registerLighthouse(pi: ExtensionAPI, runtime: BrowserRuntime): v
       return new Text(theme.fg("success", lines.join("\n")), 0, 0);
     },
   });
-
-
 }

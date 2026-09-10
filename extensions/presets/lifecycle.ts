@@ -5,7 +5,11 @@ import { loadPresets, readStoredPresetName } from "./storage.ts";
 import { getServiceTierIntegration, PERSIST_PRESET } from "./integration.ts";
 import { notify } from "./utils.ts";
 
-export function registerLifecycle(pi: ExtensionAPI, state: PresetsState, presets: ReturnType<typeof createPresets>): void {
+export function registerLifecycle(
+  pi: ExtensionAPI,
+  state: PresetsState,
+  presets: ReturnType<typeof createPresets>,
+): void {
   let initialTools: string[] = [];
   const unsubscribe = pi.events.on(PERSIST_PRESET, (data) => {
     presets.persist(data as Parameters<typeof presets.persist>[0]);
@@ -22,9 +26,20 @@ export function registerLifecycle(pi: ExtensionAPI, state: PresetsState, presets
     const restored = presets.restore(ctx);
     const name = presetFlag || (!restored ? readStoredPresetName() : undefined);
     if (name === "none") {
-      await presets.clearPreset(ctx, { persist: true, notify: Boolean(presetFlag), source: "CLI --preset", storeDefault: false });
+      await presets.clearPreset(ctx, {
+        persist: true,
+        notify: Boolean(presetFlag),
+        source: "CLI --preset",
+        storeDefault: false,
+      });
     } else if (name) {
-      if (Object.hasOwn(state.presets, name)) await presets.applyPreset(name, state.presets[name], ctx, { persist: true, notify: Boolean(presetFlag), source: presetFlag ? "CLI --preset" : "global default", storeDefault: !presetFlag });
+      if (Object.hasOwn(state.presets, name))
+        await presets.applyPreset(name, state.presets[name], ctx, {
+          persist: true,
+          notify: Boolean(presetFlag),
+          source: presetFlag ? "CLI --preset" : "global default",
+          storeDefault: !presetFlag,
+        });
       else notify(ctx, `Unknown preset "${name}". Use /preset status to inspect configuration.`, "warning");
     }
     presets.persist(ctx);

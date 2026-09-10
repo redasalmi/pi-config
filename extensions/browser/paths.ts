@@ -68,8 +68,7 @@ export async function ensureDirectory(path: string): Promise<string> {
   return path;
 }
 
-export async function assertNoSymlinkComponents(root: string, candidate: string): Promise<string> {
-  const resolvedRoot = await realpath(root);
+async function assertNoSymlinkComponentsFrom(resolvedRoot: string, candidate: string): Promise<void> {
   const resolvedCandidate = resolve(candidate);
   if (!isContained(resolvedRoot, resolvedCandidate)) {
     throw new Error(`Path must remain inside the Browser artifact store: ${candidate}`);
@@ -86,7 +85,19 @@ export async function assertNoSymlinkComponents(root: string, candidate: string)
       break;
     }
   }
+}
+
+export async function assertNoSymlinkComponents(root: string, candidate: string): Promise<string> {
+  await assertNoSymlinkComponentsFrom(await realpath(root), candidate);
   return candidate;
+}
+
+/** Validate many paths against one resolved root, avoiding a realpath call per path. */
+export async function assertNoSymlinksUnder(root: string, candidates: readonly string[]): Promise<void> {
+  const resolvedRoot = await realpath(root);
+  for (const candidate of candidates) {
+    await assertNoSymlinkComponentsFrom(resolvedRoot, candidate);
+  }
 }
 
 export async function assertNoSymlinkEscape(root: string, candidate: string): Promise<string> {

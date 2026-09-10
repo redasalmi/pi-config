@@ -214,9 +214,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal) {
       const results = await searchWeb(params, signal);
-      const text = results.length
-        ? untrustedWebContent(results.map(resultText).join("\n\n"))
-        : "No results found.";
+      const text = results.length ? untrustedWebContent(results.map(resultText).join("\n\n")) : "No results found.";
       return { content: [{ type: "text", text: truncateOutput(text) }], details: { resultCount: results.length } };
     },
   });

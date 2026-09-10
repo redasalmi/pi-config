@@ -25,6 +25,7 @@ import {
   renderWindow,
   getAccountId,
   getHeader,
+  getStat,
   isRecord,
   itemLabel,
   notify,
@@ -214,15 +215,6 @@ export function mergeSnapshot(current: RateLimitSnapshot | undefined, update: Ra
   };
 }
 
-export function getStat(
-  stats: TokenUsageProfile["stats"],
-  snake: keyof NonNullable<TokenUsageProfile["stats"]>,
-  camel: string,
-): number | undefined {
-  const value = stats?.[snake] ?? (stats as Record<string, unknown> | undefined)?.[camel];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
 function getBuckets(stats: TokenUsageProfile["stats"]): Array<{ date: string; tokens: number }> {
   const raw = stats?.daily_usage_buckets ?? stats?.dailyUsageBuckets ?? [];
   if (!Array.isArray(raw)) return [];
@@ -263,7 +255,9 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     state.tokenUsage = undefined;
   }
 
-  function lifetimeSignal(): AbortSignal { return auxiliaryAbort.signal; }
+  function lifetimeSignal(): AbortSignal {
+    return auxiliaryAbort.signal;
+  }
   function cancelRefresh(): void {
     state.refreshGeneration++;
     state.refreshAbortController?.abort();
@@ -377,13 +371,17 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
         tokenObservedAt = Date.now();
         return true;
       } catch (error) {
-        if (!signal.aborted) console.error(`Codex token usage refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (!signal.aborted)
+          console.error(`Codex token usage refresh failed: ${error instanceof Error ? error.message : String(error)}`);
         return false;
       }
     })();
     tokenPromise = promise;
-    try { return await promise; }
-    finally { if (tokenPromise === promise) tokenPromise = undefined; }
+    try {
+      return await promise;
+    } finally {
+      if (tokenPromise === promise) tokenPromise = undefined;
+    }
   }
 
   async function loadGitBranch(ctx: ExtensionContext, force = false): Promise<void> {
@@ -402,13 +400,20 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       }
     })();
     gitPromise = promise;
-    try { await promise; }
-    finally { if (gitPromise === promise) gitPromise = undefined; }
+    try {
+      await promise;
+    } finally {
+      if (gitPromise === promise) gitPromise = undefined;
+    }
   }
 
   async function backendRequest(ctx: ExtensionContext, path: string, init?: RequestInit): Promise<unknown> {
     if (ctx.model?.provider !== PROVIDER) throw new Error("Select a ChatGPT Codex model first");
-    const signal = AbortSignal.any([auxiliaryAbort.signal, ...(init?.signal ? [init.signal] : []), AbortSignal.timeout(10_000)]);
+    const signal = AbortSignal.any([
+      auxiliaryAbort.signal,
+      ...(init?.signal ? [init.signal] : []),
+      AbortSignal.timeout(10_000),
+    ]);
     const auth = await ctx.modelRegistry.getProviderAuth(PROVIDER);
     const apiKey = auth?.auth.apiKey;
     if (!apiKey) throw new Error("No ChatGPT Codex access token");
@@ -454,20 +459,24 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       const id = typeof credit.id === "string" ? credit.id.trim() : "";
       const status = typeof credit.status === "string" ? credit.status.trim().toLowerCase() : "";
       if (!id || status !== "available") return [];
-      return [{
-        id,
-        ...(typeof credit.reset_type === "string" ? { reset_type: credit.reset_type } : {}),
-        ...(typeof credit.resetType === "string" ? { resetType: credit.resetType } : {}),
-        status,
-        ...(typeof credit.granted_at === "string" ? { granted_at: credit.granted_at } : {}),
-        ...(typeof credit.grantedAt === "string" ? { grantedAt: credit.grantedAt } : {}),
-        ...(typeof credit.expires_at === "string" || credit.expires_at === null ? { expires_at: credit.expires_at } : {}),
-        ...(typeof credit.expiresAt === "string" || credit.expiresAt === null ? { expiresAt: credit.expiresAt } : {}),
-        ...(typeof credit.title === "string" || credit.title === null ? { title: credit.title } : {}),
-        ...(typeof credit.description === "string" || credit.description === null
-          ? { description: credit.description }
-          : {}),
-      }];
+      return [
+        {
+          id,
+          ...(typeof credit.reset_type === "string" ? { reset_type: credit.reset_type } : {}),
+          ...(typeof credit.resetType === "string" ? { resetType: credit.resetType } : {}),
+          status,
+          ...(typeof credit.granted_at === "string" ? { granted_at: credit.granted_at } : {}),
+          ...(typeof credit.grantedAt === "string" ? { grantedAt: credit.grantedAt } : {}),
+          ...(typeof credit.expires_at === "string" || credit.expires_at === null
+            ? { expires_at: credit.expires_at }
+            : {}),
+          ...(typeof credit.expiresAt === "string" || credit.expiresAt === null ? { expiresAt: credit.expiresAt } : {}),
+          ...(typeof credit.title === "string" || credit.title === null ? { title: credit.title } : {}),
+          ...(typeof credit.description === "string" || credit.description === null
+            ? { description: credit.description }
+            : {}),
+        },
+      ];
     });
   }
 
@@ -492,7 +501,9 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
         `${ctx.ui.theme.fg("mdLink", "Today:")} ${ctx.ui.theme.fg("success", formatTokens(today.reduce((sum, bucket) => sum + bucket.tokens, 0)))}`,
       );
     if (view === "weekly")
-      lines.push(`${ctx.ui.theme.fg("mdLink", "Last 7 days:")} ${ctx.ui.theme.fg("success", formatTokens(weeklyTokens))}`);
+      lines.push(
+        `${ctx.ui.theme.fg("mdLink", "Last 7 days:")} ${ctx.ui.theme.fg("success", formatTokens(weeklyTokens))}`,
+      );
     if (view === "cumulative")
       lines.push(`${ctx.ui.theme.fg("mdLink", "Lifetime:")} ${ctx.ui.theme.fg("success", formatTokens(lifetime))}`);
     lines.push(
@@ -528,7 +539,12 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       try {
         credits = normalizeResetCredits(await backendRequest(ctx, RESET_CREDITS_PATH));
       } catch (error) {
-        if (!signal.aborted) notify(ctx, `Could not load usage limit resets: ${error instanceof Error ? error.message : String(error)}`, "error");
+        if (!signal.aborted)
+          notify(
+            ctx,
+            `Could not load usage limit resets: ${error instanceof Error ? error.message : String(error)}`,
+            "error",
+          );
         return;
       }
     }
@@ -554,12 +570,21 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
     const detail = credit
       ? `${credit.title || "Usage limit reset"}${expires ? `, expires ${formatDate(expires)}` : ""}`
       : "the next available usage limit reset";
-    if (!(await ctx.ui.confirm("Confirm usage limit reset", `Redeem ${detail}? This consumes one saved reset.`, { signal })) || signal.aborted) return;
+    if (
+      !(await ctx.ui.confirm("Confirm usage limit reset", `Redeem ${detail}? This consumes one saved reset.`, {
+        signal,
+      })) ||
+      signal.aborted
+    )
+      return;
 
     const idempotencyKey = randomUUID();
     const body = { credit_id: credit?.id, redeem_request_id: idempotencyKey };
     try {
-      const result = await backendRequest(ctx, `${RESET_CREDITS_PATH}/consume`, { method: "POST", body: JSON.stringify(body) });
+      const result = await backendRequest(ctx, `${RESET_CREDITS_PATH}/consume`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
       if (signal.aborted) return;
       const outcome = redemptionOutcome(result);
       if (!["reset", "success"].includes(outcome)) {
@@ -573,11 +598,18 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       const retry = await ctx.ui.confirm("Reset redemption failed", "Retry the same request safely?", { signal });
       if (signal.aborted) return;
       if (!retry) {
-        notify(ctx, `Could not redeem usage limit reset: ${error instanceof Error ? error.message : String(error)}`, "error");
+        notify(
+          ctx,
+          `Could not redeem usage limit reset: ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
         return;
       }
       try {
-        const result = await backendRequest(ctx, `${RESET_CREDITS_PATH}/consume`, { method: "POST", body: JSON.stringify(body) });
+        const result = await backendRequest(ctx, `${RESET_CREDITS_PATH}/consume`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
         if (signal.aborted) return;
         const outcome = redemptionOutcome(result);
         if (!["reset", "success"].includes(outcome)) {
@@ -587,7 +619,12 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
         notify(ctx, "Usage limit reset redeemed; refreshing limits", "info");
         await refresh(ctx, true);
       } catch (retryError) {
-        if (!signal.aborted) notify(ctx, `Could not redeem usage limit reset: ${retryError instanceof Error ? retryError.message : String(retryError)}`, "error");
+        if (!signal.aborted)
+          notify(
+            ctx,
+            `Could not redeem usage limit reset: ${retryError instanceof Error ? retryError.message : String(retryError)}`,
+            "error",
+          );
       }
     }
   }
@@ -604,8 +641,14 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       notify(ctx, `Quota warnings ${state.quotaWarnings ? "enabled" : "disabled"}`);
       return;
     }
-    if (ctx.model?.provider !== PROVIDER) { notify(ctx, "Select a ChatGPT Codex model to view account usage", "error"); return; }
-    if (view === "limits") { await showLimits(ctx); return; }
+    if (ctx.model?.provider !== PROVIDER) {
+      notify(ctx, "Select a ChatGPT Codex model to view account usage", "error");
+      return;
+    }
+    if (view === "limits") {
+      await showLimits(ctx);
+      return;
+    }
     if (["daily", "weekly", "cumulative"].includes(view)) {
       await showTokenActivity(ctx, view as "daily" | "weekly" | "cumulative");
       return;
@@ -647,10 +690,13 @@ export function createUsage(pi: ExtensionAPI, state: CodexState, deps: UsageDeps
       if (snapshot.credits) lines.push(renderCredits(ctx, snapshot.credits) ?? "");
       if (snapshot.individualLimit) lines.push(renderIndividualLimit(ctx, snapshot.individualLimit) ?? "");
       if (snapshot.spendControlReached || snapshot.rateLimitReachedType) {
-        lines.push(`${ctx.ui.theme.fg("mdLink", "Limit reached:")} ${ctx.ui.theme.fg("error", snapshot.rateLimitReachedType ?? "spend control")}`);
+        lines.push(
+          `${ctx.ui.theme.fg("mdLink", "Limit reached:")} ${ctx.ui.theme.fg("error", snapshot.rateLimitReachedType ?? "spend control")}`,
+        );
       }
     }
-    if (state.resetCreditCount !== undefined) lines.push(itemLabel(ctx, "Reset credits", String(state.resetCreditCount)));
+    if (state.resetCreditCount !== undefined)
+      lines.push(itemLabel(ctx, "Reset credits", String(state.resetCreditCount)));
     const observedAt = state.accountObservedAt ? new Date(state.accountObservedAt).toLocaleTimeString() : "unavailable";
     const staleNote = state.statusStale ? ctx.ui.theme.fg("dim", " (refresh failed; cached)") : "";
     lines.push(`${itemLabel(ctx, "Full account data", observedAt)}${staleNote}`);

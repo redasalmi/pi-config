@@ -261,15 +261,18 @@ For **Plan**:
 - **Mode:** Plan
 
 ### Proposed imports
+
 - `/source` → `/destination`
   - Identity: [title, year, provider ID, confidence basis]
   - Sidecars: [handling]
   - Subtitles: [one status per requested language]
 
 ### Blockers or conflicts
+
 - [Unresolved identity, ordering, path, scope, or collision]
 
 ### Files left untouched
+
 - [Active downloads, disc media, unknown artifacts, clutter, or managed media]
 ```
 
@@ -283,6 +286,7 @@ For **Import** or **Scoped maintenance**:
 - **Result:** Complete / Complete with subtitle gaps / Partial / No changes
 
 ### Imported or updated
+
 - `/original/source` → `/final/video/path`
   - Operation: [moved / copied / reused]
   - Verification: [no-clobber rename or verified staged copy; ffprobe result]
@@ -290,12 +294,15 @@ For **Import** or **Scoped maintenance**:
   - External subtitle paths: [exact paths, or `None`]
 
 ### Skipped, unresolved, or conflicting
+
 - [Item, reason, required decision]
 
 ### Residual candidate entries
+
 - [Targeted media, incomplete downloads, or unknown files, or `None`]
 
 ### Notes
+
 - [Only material limitations, permission uncertainty, timing not checked, or out-of-scope scan]
 ```
 

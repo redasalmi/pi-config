@@ -1,22 +1,41 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { PRESET_ENTRY_TYPE } from "../presets/constants.ts";
-import { PERSIST_PRESET, PRESET_CHANGED, SERVICE_TIER_REQUEST, type PresetChanged, type ServiceTierIntegration, type ServiceTierRequest } from "../presets/integration.ts";
+import {
+  PERSIST_PRESET,
+  PRESET_CHANGED,
+  SERVICE_TIER_REQUEST,
+  type PresetChanged,
+  type ServiceTierIntegration,
+  type ServiceTierRequest,
+} from "../presets/integration.ts";
 import type { CodexState } from "./types.ts";
-import { isRecord } from "./constants.ts";
+import { isRecord } from "./utils.ts";
 import { readStoredServiceTier } from "./storage.ts";
 import { findServiceTier, refreshServiceTierCatalog } from "./service-tiers.ts";
 
 export const SERVICE_TIER_ENTRY_TYPE = "codex-service-tier";
 
-export function createPresetIntegration(pi: ExtensionAPI, state: CodexState, renderStatus: (ctx: ExtensionContext) => boolean) {
+export function createPresetIntegration(
+  pi: ExtensionAPI,
+  state: CodexState,
+  renderStatus: (ctx: ExtensionContext) => boolean,
+) {
   let initialization: Promise<void> | undefined;
   let lastSaved: string | null | undefined;
 
   function restore(ctx: ExtensionContext, defaultTier?: string | null): void {
-    const entry = ctx.sessionManager.getBranch().reverse().find((entry) =>
-      entry.type === "custom" && [SERVICE_TIER_ENTRY_TYPE, PRESET_ENTRY_TYPE].includes(entry.customType) &&
-      isRecord(entry.data) && (entry.data.serviceTier === null || typeof entry.data.serviceTier === "string"));
-    const requested = entry?.type === "custom" && isRecord(entry.data) ? entry.data.serviceTier as string | null : defaultTier;
+    const entry = ctx.sessionManager
+      .getBranch()
+      .reverse()
+      .find(
+        (entry) =>
+          entry.type === "custom" &&
+          [SERVICE_TIER_ENTRY_TYPE, PRESET_ENTRY_TYPE].includes(entry.customType) &&
+          isRecord(entry.data) &&
+          (entry.data.serviceTier === null || typeof entry.data.serviceTier === "string"),
+      );
+    const requested =
+      entry?.type === "custom" && isRecord(entry.data) ? (entry.data.serviceTier as string | null) : defaultTier;
     state.selectedServiceTier = findServiceTier(ctx.model, requested ?? undefined)?.id;
     lastSaved = entry ? requested : undefined;
   }
@@ -64,7 +83,12 @@ export function createPresetIntegration(pi: ExtensionAPI, state: CodexState, ren
   });
 
   return {
-    initialize, restore, persist,
-    dispose() { unsubscribeTier(); unsubscribeStatus(); },
+    initialize,
+    restore,
+    persist,
+    dispose() {
+      unsubscribeTier();
+      unsubscribeStatus();
+    },
   };
 }

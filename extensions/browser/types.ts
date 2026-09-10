@@ -116,7 +116,9 @@ export interface BrowserState {
   readonly chromeDevtoolsSession: string;
 }
 
-export type BrowserStatePatch = Partial<Omit<BrowserState, "playwrightSession" | "chromeDevtoolsSession" | "sharedCdpEndpoint" | "chromeDevtoolsPid">> & {
+export type BrowserStatePatch = Partial<
+  Omit<BrowserState, "playwrightSession" | "chromeDevtoolsSession" | "sharedCdpEndpoint" | "chromeDevtoolsPid">
+> & {
   sharedCdpEndpoint?: string | null;
   chromeDevtoolsPid?: number | null;
 };
@@ -145,11 +147,7 @@ export interface BrowserRuntime {
     name: string,
     kind?: BrowserArtifactKind,
   ): Promise<string>;
-  allocateDirectory(
-    ctx: ExtensionContext,
-    backend: BrowserBackend | "browser",
-    name: string,
-  ): Promise<string>;
+  allocateDirectory(ctx: ExtensionContext, backend: BrowserBackend | "browser", name: string): Promise<string>;
   output(
     ctx: ExtensionContext,
     input: string,

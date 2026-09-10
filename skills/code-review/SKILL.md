@@ -159,6 +159,7 @@ Lead with findings ordered P0 to P3. Keep each concise, independent, and ready t
 ## Findings
 
 ### [P1] Imperative, specific title
+
 `path/to/file.ts:42-47`
 
 When <trigger>, <current behavior> causes <observable impact>. Explain the evidence and why existing guards or tests do not prevent it.
@@ -177,6 +178,7 @@ Include `## Questions` only for remaining decision-relevant, non-blocking questi
 
 ```markdown
 ## Review summary
+
 - **Verdict:** Request changes / Approve with comments / No material findings / Review incomplete
 - **Compared:** `<base-ref>@<sha> ← <head-ref>@<sha>`; merge base `<sha>`
 - **Scope:** commits and changed paths reviewed; material coverage limits only

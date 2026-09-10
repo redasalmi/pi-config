@@ -1,4 +1,4 @@
-import {access, realpath} from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -13,7 +13,7 @@ const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const BACKEND_TOOL_NAMES = Object.values(BACKEND_TOOLS);
 
 async function executablePath(pi: ExtensionAPI, command: string, ctx: ExtensionContext): Promise<string | undefined> {
-  const result = await pi.exec("which", [command], {cwd: ctx.cwd, timeout: 5_000});
+  const result = await pi.exec("which", [command], { cwd: ctx.cwd, timeout: 5_000 });
   if (result.code !== 0) return undefined;
   const value = result.stdout.trim();
   if (!value) return undefined;
@@ -68,7 +68,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
   pi.on("session_start", () => {
     // Keep the coordinator and core Pi tools active. Backend definitions remain
     // registered but are loaded only after browser.prepare or browser.handoff.
-    const active = pi.getActiveTools().filter(name => !BACKEND_TOOL_NAMES.includes(name));
+    const active = pi.getActiveTools().filter((name) => !BACKEND_TOOL_NAMES.includes(name));
     pi.setActiveTools([...new Set(["browser", ...active])]);
   });
 
@@ -88,6 +88,6 @@ export default function browserExtension(pi: ExtensionAPI): void {
       const root = await findChromeSkillRoot(chrome);
       if (root) skillPaths.push(root);
     }
-    return {skillPaths: [...new Set(skillPaths)]};
+    return { skillPaths: [...new Set(skillPaths)] };
   });
 }

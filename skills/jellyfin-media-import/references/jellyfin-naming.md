@@ -45,7 +45,7 @@ Movies belong in individual folders. For a single ordinary file, the video basen
 
 ### Multiple versions
 
-Jellyfin groups versions when each filename starts with the parent-folder name exactly, followed by ` - ` and a useful label:
+Jellyfin groups versions when each filename starts with the parent-folder name exactly, followed by `-` and a useful label:
 
 ```text
 Movies/Movie Title (Year) [tmdbid-12345]/

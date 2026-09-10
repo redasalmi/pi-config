@@ -2,7 +2,16 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { PROVIDER } from "./types.ts";
 
 export function collectStats(entries: readonly SessionEntry[]) {
-  const totals = { messages: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, missingUsage: 0, missingCost: 0 };
+  const totals = {
+    messages: 0,
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    cost: 0,
+    missingUsage: 0,
+    missingCost: 0,
+  };
   const seen = new Set<string>();
   for (const entry of entries) {
     if (seen.has(entry.id)) continue;
@@ -14,8 +23,15 @@ export function collectStats(entries: readonly SessionEntry[]) {
       const value = usage?.[field];
       if (typeof value === "number" && Number.isFinite(value) && value >= 0) totals[field] += value;
     }
-    if (!usage || [usage.input, usage.output, usage.cacheRead, usage.cacheWrite].some((value) => !Number.isFinite(value) || value < 0)) totals.missingUsage++;
-    if (typeof usage?.cost?.total === "number" && Number.isFinite(usage.cost.total) && usage.cost.total >= 0) totals.cost += usage.cost.total;
+    if (
+      !usage ||
+      [usage.input, usage.output, usage.cacheRead, usage.cacheWrite].some(
+        (value) => !Number.isFinite(value) || value < 0,
+      )
+    )
+      totals.missingUsage++;
+    if (typeof usage?.cost?.total === "number" && Number.isFinite(usage.cost.total) && usage.cost.total >= 0)
+      totals.cost += usage.cost.total;
     else totals.missingCost++;
   }
   return totals;
@@ -24,7 +40,7 @@ export function collectStats(entries: readonly SessionEntry[]) {
 export function statsText(entries: readonly SessionEntry[]): string {
   const stats = collectStats(entries);
   const promptTokens = stats.input + stats.cacheRead + stats.cacheWrite;
-  const cache = promptTokens ? `${(stats.cacheRead / promptTokens * 100).toFixed(1)}%` : "n/a";
+  const cache = promptTokens ? `${((stats.cacheRead / promptTokens) * 100).toFixed(1)}%` : "n/a";
   return [
     "OpenCode Go — current session branch (local assistant messages only)",
     `Messages: ${stats.messages}`,

@@ -13,7 +13,13 @@ export async function ensurePlaywrightConfig(workspace: BrowserWorkspace, source
   const directory = join(workspace.root, ".playwright");
   const configPath = join(directory, "cli.config.json");
   await assertNoSymlinkComponents(workspace.root, directory);
-  if (!sourcePath && await access(configPath).then(() => true, () => false)) {
+  if (
+    !sourcePath &&
+    (await access(configPath).then(
+      () => true,
+      () => false,
+    ))
+  ) {
     await assertNoSymlinkEscape(workspace.root, configPath);
     return configPath;
   }
@@ -28,9 +34,10 @@ export async function ensurePlaywrightConfig(workspace: BrowserWorkspace, source
       throw new Error(`Playwright config must be a readable JSON file: ${sourcePath}`);
     }
   }
-  const sourceBrowser = source.browser && typeof source.browser === "object" && !Array.isArray(source.browser)
-    ? source.browser as Record<string, unknown>
-    : {};
+  const sourceBrowser =
+    source.browser && typeof source.browser === "object" && !Array.isArray(source.browser)
+      ? (source.browser as Record<string, unknown>)
+      : {};
   const config = {
     ...source,
     outputDir: workspace.playwrightDir,
@@ -41,10 +48,8 @@ export async function ensurePlaywrightConfig(workspace: BrowserWorkspace, source
     },
   };
   await assertNoSymlinkEscape(workspace.root, configPath);
-  await withFileMutationQueue(configPath, () => writeFile(
-    configPath,
-    `${JSON.stringify(config, null, 2)}\n`,
-    { encoding: "utf8", mode: 0o600 },
-  ));
+  await withFileMutationQueue(configPath, () =>
+    writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 }),
+  );
   return configPath;
 }

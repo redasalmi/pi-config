@@ -1,17 +1,22 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CodexState } from "./types.ts";
-import { DEFAULT_STATUSLINE, PROVIDER, STATUS_KEY, isRecord } from "./constants.ts";
+import { DEFAULT_STATUSLINE, PROVIDER, STATUS_KEY } from "./constants.ts";
+import { isRecord } from "./utils.ts";
 import { readCodexDefaults } from "./storage.ts";
 import { findServiceTier, refreshServiceTierCatalog } from "./service-tiers.ts";
 import type { createPresetIntegration } from "./preset-integration.ts";
 import type { createStatusline } from "./statusline.ts";
 import type { createUsage } from "./usage.ts";
 
-export function registerLifecycle(pi: ExtensionAPI, state: CodexState, deps: {
-  usage: ReturnType<typeof createUsage>;
-  tiers: ReturnType<typeof createPresetIntegration>;
-  statusline: ReturnType<typeof createStatusline>;
-}): void {
+export function registerLifecycle(
+  pi: ExtensionAPI,
+  state: CodexState,
+  deps: {
+    usage: ReturnType<typeof createUsage>;
+    tiers: ReturnType<typeof createPresetIntegration>;
+    statusline: ReturnType<typeof createStatusline>;
+  },
+): void {
   let timer: ReturnType<typeof setInterval> | undefined;
   const wantsUsage = () => state.statusline.some((item) => item === "usage" || item === "credits");
   function refreshLocal(ctx: ExtensionContext): void {
@@ -52,8 +57,12 @@ export function registerLifecycle(pi: ExtensionAPI, state: CodexState, deps: {
     refreshLocal(ctx);
     if (ctx.hasUI && (wantsUsage() || state.quotaWarnings)) deps.usage.scheduleRefresh(ctx);
   });
-  pi.on("thinking_level_select", (_event, ctx) => { deps.statusline.renderStatus(ctx); });
-  pi.on("session_compact", (_event, ctx) => { deps.statusline.renderStatus(ctx); });
+  pi.on("thinking_level_select", (_event, ctx) => {
+    deps.statusline.renderStatus(ctx);
+  });
+  pi.on("session_compact", (_event, ctx) => {
+    deps.statusline.renderStatus(ctx);
+  });
 
   pi.on("model_select", async (_event, ctx) => {
     deps.usage.cancelAll();

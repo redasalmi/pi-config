@@ -217,9 +217,11 @@ Use the smallest useful structure. Normally:
 
 ```markdown
 ## Summary
+
 - Describe the outcome and material behavior changes in one to four distinct bullets.
 
 ## Testing
+
 - <Passed / Failed / Reported / Added/updated / Suggested / Not run> — <applicable evidence, reviewer check, or reason>
 ```
 

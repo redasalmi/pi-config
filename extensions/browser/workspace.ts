@@ -1,10 +1,12 @@
-import {createHash, randomBytes} from "node:crypto";
-import {rm} from "node:fs/promises";
-import {join} from "node:path";
-import type {ExtensionAPI, ExtensionContext} from "@earendil-works/pi-coding-agent";
-import {BrowserArtifactStore, browserArtifactRoot, createWorkspace} from "./artifact-store.ts";
-import {ensurePlaywrightConfig} from "./config.ts";
-import {redactSecrets, validateLocalCdpEndpoint} from "./redaction.ts";
+import { createHash, randomBytes } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { BrowserArtifactStore, browserArtifactRoot, createWorkspace } from "./artifact-store.ts";
+import { ensurePlaywrightConfig } from "./config.ts";
+import { redactSecrets, validateLocalCdpEndpoint } from "./redaction.ts";
 import type {
   BrowserBackend,
   BrowserCloseFailure,
@@ -18,13 +20,29 @@ import type {
   BrowserStatePatch,
   BrowserWorkspace,
 } from "./types.ts";
-import {assertNoSymlinkComponents, assertNoSymlinkEscape, ensureDirectory, isContained} from "./paths.ts";
+import { assertNoSymlinkEscape, assertNoSymlinksUnder, ensureDirectory, isContained } from "./paths.ts";
 
 const DEFAULT_TIMEOUT = 120_000;
 
+// Chrome DevTools needs a short IPC path, but /tmp is a symlink on macOS
+// (/tmp -> /private/tmp). Resolve it once so lexical and real paths agree with
+// assertNoSymlinksUnder, and fall back to the OS temp directory elsewhere.
+function resolveTempBase(): string {
+  for (const candidate of ["/tmp", tmpdir()]) {
+    try {
+      return realpathSync(candidate);
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return tmpdir();
+}
+
+const TEMP_BASE = resolveTempBase();
+
 function runtimeDirectory(workspace: BrowserWorkspace): string {
   const digest = createHash("sha256").update(`browser:${workspace.root}`).digest("hex").slice(0, 24);
-  return join("/tmp", `pi-browser-${digest}`);
+  return join(TEMP_BASE, `pi-browser-${digest}`);
 }
 
 function commandEnvironment(command: string, workspace: BrowserWorkspace): string[] {
@@ -46,11 +64,11 @@ async function executeInWorkspace(
   command: string,
   args: string[],
   workspace: BrowserWorkspace,
-  options: {signal?: AbortSignal; timeout?: number} = {},
+  options: { signal?: AbortSignal; timeout?: number } = {},
 ): Promise<BrowserProcessResult> {
   const environment = commandEnvironment(command, workspace);
   if (command === "chrome-devtools") {
-    await assertNoSymlinkComponents("/tmp", runtimeDirectory(workspace));
+    await assertNoSymlinksUnder(TEMP_BASE, [runtimeDirectory(workspace)]);
     await ensureDirectory(runtimeDirectory(workspace));
   }
   const actualCommand = environment.length > 0 ? "env" : command;
@@ -60,7 +78,7 @@ async function executeInWorkspace(
     signal: options.signal,
     timeout: options.timeout ?? DEFAULT_TIMEOUT,
   });
-  return {...result, command, args: [...args], cwd: workspace.root};
+  return { ...result, command, args: [...args], cwd: workspace.root };
 }
 
 function initialState(runtimeId: string): BrowserState {
@@ -76,7 +94,7 @@ function redactData(data: Record<string, unknown> | undefined): Record<string, u
   try {
     return JSON.parse(redactSecrets(JSON.stringify(data))) as Record<string, unknown>;
   } catch {
-    return {summary: "Evidence data could not be serialized."};
+    return { summary: "Evidence data could not be serialized." };
   }
 }
 
@@ -111,13 +129,13 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     const key = this.key(ctx);
     const current = this.states.get(key) ?? initialState(this.runtimeId);
     this.states.set(key, current);
-    return Promise.resolve({...current});
+    return Promise.resolve({ ...current });
   }
 
   async updateState(ctx: ExtensionContext, patch: BrowserStatePatch): Promise<BrowserState> {
     const key = this.key(ctx);
     const current = await this.state(ctx);
-    const next: BrowserState = {...current};
+    const next: BrowserState = { ...current };
     if (patch.currentUrl !== undefined) next.currentUrl = redactSecrets(patch.currentUrl);
     if (patch.currentTitle !== undefined) next.currentTitle = redactSecrets(patch.currentTitle);
     if (patch.lastBackend !== undefined) next.lastBackend = patch.lastBackend;
@@ -133,7 +151,7 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     }
     if (next.sharedCdpEndpoint !== current.sharedCdpEndpoint) delete next.chromeDevtoolsPid;
     this.states.set(key, next);
-    return {...next};
+    return { ...next };
   }
 
   async exec(
@@ -141,16 +159,18 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     command: string,
     args: string[],
     ctx: ExtensionContext,
-    options: {signal?: AbortSignal; timeout?: number; cwd?: string} = {},
+    options: { signal?: AbortSignal; timeout?: number; cwd?: string } = {},
   ): Promise<BrowserProcessResult> {
     const workspace = await this.ensure(ctx);
     const cwd = options.cwd ?? workspace.root;
     if (!isContained(workspace.root, cwd)) {
       throw new Error(`Browser CLI cwd must remain inside the Browser artifact store: ${cwd}`);
     }
-    await assertNoSymlinkEscape(workspace.root, cwd);
+    // ensure() already validated every workspace directory component, so only a
+    // custom cwd needs the extra parent-chain escape check.
+    if (cwd !== workspace.root) await assertNoSymlinkEscape(workspace.root, cwd);
     if (command === "chrome-devtools") {
-      await assertNoSymlinkComponents("/tmp", runtimeDirectory(workspace));
+      await assertNoSymlinksUnder(TEMP_BASE, [runtimeDirectory(workspace)]);
       await ensureDirectory(runtimeDirectory(workspace));
     }
     const environment = commandEnvironment(command, workspace);
@@ -161,10 +181,15 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
       signal: options.signal,
       timeout: options.timeout ?? DEFAULT_TIMEOUT,
     });
-    return {...result, command, args: [...args], cwd};
+    return { ...result, command, args: [...args], cwd };
   }
 
-  async allocateFile(ctx: ExtensionContext, backend: BrowserBackend | "browser", name: string, kind?: Parameters<BrowserRuntime["record"]>[3]): Promise<string> {
+  async allocateFile(
+    ctx: ExtensionContext,
+    backend: BrowserBackend | "browser",
+    name: string,
+    kind?: Parameters<BrowserRuntime["record"]>[3],
+  ): Promise<string> {
     return this.store.allocateFile(await this.workspace(ctx), backend, name, kind);
   }
 
@@ -172,7 +197,11 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     return this.store.allocateDirectory(await this.workspace(ctx), backend, name);
   }
 
-  async output(ctx: ExtensionContext, input: string, options?: {maxBytes?: number; maxLines?: number; prefix?: string} & BrowserRecordOptions) {
+  async output(
+    ctx: ExtensionContext,
+    input: string,
+    options?: { maxBytes?: number; maxLines?: number; prefix?: string } & BrowserRecordOptions,
+  ) {
     return this.store.output(await this.workspace(ctx), redactSecrets(input), options);
   }
 
@@ -217,10 +246,14 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     return this.store.read(await this.workspace(ctx), artifactPath);
   }
 
-  private async closeWorkspace(pi: ExtensionAPI, workspace: BrowserWorkspace, current: BrowserState): Promise<BrowserCloseResult> {
+  private async closeWorkspace(
+    pi: ExtensionAPI,
+    workspace: BrowserWorkspace,
+    current: BrowserState,
+  ): Promise<BrowserCloseResult> {
     const closed: string[] = [];
     const failures: BrowserCloseFailure[] = [];
-    const attempts: Array<{target: string; command: string; args: string[]}> = [
+    const attempts: Array<{ target: string; command: string; args: string[] }> = [
       {
         target: "playwright",
         command: "playwright-cli",
@@ -235,20 +268,21 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
     for (const attempt of attempts) {
       let result: BrowserProcessResult;
       try {
-        result = await executeInWorkspace(pi, attempt.command, attempt.args, workspace, {timeout: 15_000});
+        result = await executeInWorkspace(pi, attempt.command, attempt.args, workspace, { timeout: 15_000 });
       } catch (error) {
         const reason = redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 1_000);
         if (/enoent|command not found|executable.*not found/i.test(reason)) {
           closed.push(attempt.target);
           continue;
         }
-        failures.push({target: attempt.target, retainedPath: workspace.root, reason});
+        failures.push({ target: attempt.target, retainedPath: workspace.root, reason });
         continue;
       }
       const output = redactSecrets(`${result.stdout}\n${result.stderr}`.trim());
-      const harmlessNotRunning = attempt.command === "playwright-cli"
-        ? /not open|not running|no active|does not exist|not found/i.test(output)
-        : /not running|not found|does not exist/i.test(output);
+      const harmlessNotRunning =
+        attempt.command === "playwright-cli"
+          ? /not open|not running|no active|does not exist|not found/i.test(output)
+          : /not running|not found|does not exist/i.test(output);
       if (result.code === 0 || harmlessNotRunning) {
         closed.push(attempt.target);
       } else {
@@ -259,14 +293,14 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
         });
       }
     }
-    if (failures.length === 0) await rm(runtimeDirectory(workspace), {recursive: true, force: true}).catch(() => {});
-    return {closed, failures};
+    if (failures.length === 0) await rm(runtimeDirectory(workspace), { recursive: true, force: true }).catch(() => {});
+    return { closed, failures };
   }
 
   async close(pi: ExtensionAPI, ctx: ExtensionContext): Promise<BrowserCloseResult> {
     const key = this.key(ctx);
     const workspace = this.workspaces.get(key);
-    if (!workspace) return {closed: [], failures: []};
+    if (!workspace) return { closed: [], failures: [] };
     const current = await this.state(ctx);
     const result = await this.closeWorkspace(pi, workspace, current);
     if (result.failures.length === 0) {
@@ -298,13 +332,15 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
   async status(pi: ExtensionAPI, ctx: ExtensionContext): Promise<string> {
     const workspace = await this.ensure(ctx);
     const current = await this.state(ctx);
-    const checks = await Promise.all(["playwright-cli", "chrome-devtools", "lighthouse"].map(async executable => {
-      const result = await pi.exec("which", [executable], {cwd: ctx.cwd, timeout: 5_000});
-      if (result.code !== 0) return `${executable}: unavailable`;
-      const version = await this.exec(pi, executable, ["--version"], ctx, {timeout: 10_000});
-      const value = `${version.stdout}\n${version.stderr}`.trim().split("\n").find(Boolean) || "installed";
-      return `${executable}: ${value}`;
-    }));
+    const checks = await Promise.all(
+      ["playwright-cli", "chrome-devtools", "lighthouse"].map(async (executable) => {
+        const result = await pi.exec("which", [executable], { cwd: ctx.cwd, timeout: 5_000 });
+        if (result.code !== 0) return `${executable}: unavailable`;
+        const version = await this.exec(pi, executable, ["--version"], ctx, { timeout: 10_000 });
+        const value = `${version.stdout}\n${version.stderr}`.trim().split("\n").find(Boolean) || "installed";
+        return `${executable}: ${value}`;
+      }),
+    );
     const manifest = await this.store.list(workspace);
     const evidence = await this.evidence(ctx);
     return [
@@ -330,4 +366,4 @@ export class BrowserRuntimeImpl implements BrowserRuntime {
   }
 }
 
-export {browserArtifactRoot};
+export { browserArtifactRoot };

@@ -36,12 +36,9 @@ export function shortModelName(modelId: string): string {
   return modelId.replace(/^gpt-5\.6-/, "");
 }
 
-export function getStat(
-  stats: { [key: string]: unknown } | undefined,
-  snake: string,
-  camel: string,
-): number | undefined {
-  const value = stats?.[snake] ?? stats?.[camel];
+export function getStat(stats: unknown, snake: string, camel: string): number | undefined {
+  if (!isRecord(stats)) return undefined;
+  const value = stats[snake] ?? stats[camel];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 

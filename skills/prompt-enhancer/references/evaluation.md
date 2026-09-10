@@ -103,21 +103,26 @@ Claim that the enhanced prompt is better only when the agreed criteria support t
 ## Evaluation starter
 
 ### Decision
+
 [What this comparison will establish.]
 
 ### Cases
-| # | Input condition | Expected behavior | Failure signal | Set |
-|---|---|---|---|---|
-| 1 | ... | ... | ... | Development/Holdout |
+
+| #   | Input condition | Expected behavior | Failure signal | Set                 |
+| --- | --------------- | ----------------- | -------------- | ------------------- |
+| 1   | ...             | ...               | ...            | Development/Holdout |
 
 ### Pass conditions
+
 - [Objective criterion.]
 
 ### Comparison protocol
+
 - Run both prompts under the same exact model, surface, roles, context, tools, permissions, configuration, and budget.
 - Use [deterministic grader / blinded rubric / executable check].
 - Repeat [when nondeterminism matters] and report variance.
 
 ### Important limitations
+
 - [What this starter cannot establish.]
 ```
