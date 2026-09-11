@@ -24,7 +24,7 @@ also work in print/JSON mode; informational output does not pollute protocol std
 Definitions come from these layers, in increasing precedence:
 
 1. Built-in `astra`, `quick`, `work`, `deep`, and `deepseek-flash` presets (the existing defaults).
-   `deepseek-flash` uses `opencode-go` / `deepseek-flash` (DeepSeek V4.1 Flash) at high reasoning.
+   `deepseek-flash` uses `opencode-go` / `deepseek-v4.1-flash` (DeepSeek V4.1 Flash) at high reasoning.
 2. `presets.json` in Pi's agent directory.
 3. `<cwd>/.pi/presets.json`, only when Pi trusts the project.
 

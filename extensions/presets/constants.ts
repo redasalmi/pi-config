@@ -33,7 +33,7 @@ export const DEFAULT_PRESETS: PresetsConfig = {
   },
   "deepseek-flash": {
     provider: "opencode-go",
-    model: "deepseek-flash",
+    model: "deepseek-v4.1-flash",
     thinkingLevel: "high",
     description: "DeepSeek V4.1 Flash with high reasoning",
   },
