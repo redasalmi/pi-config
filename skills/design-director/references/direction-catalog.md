@@ -31,7 +31,7 @@ Define concrete choices rather than a trend label:
 | Imagery/data  | Photography, illustration, diagrams, charts, texture, or none                      |
 | Content voice | Direct, technical, reassuring, editorial, playful, or another product-fit tone     |
 | Motion        | Nearly static, crisp, elastic, cinematic, or system-native                         |
-| Signature     | One or two repeatable devices tied to the product                                  |
+| Signature     | Distinguishing choices tied to the product, when useful                            |
 | Tradeoff      | What this direction intentionally does less well                                   |
 
 A signature move might be a product-specific data strip, annotation system, split-pane rhythm, illustration grammar, comparison device, or content transition. A gradient, glow, large heading, or unusual font is not a concept by itself.
@@ -156,19 +156,19 @@ For each Direction-mode option provide:
 
 - a product-specific name, not only a family label;
 - a one-sentence experience promise;
-- at least five fingerprint decisions, including composition or hierarchy;
+- the fingerprint decisions that distinguish the approach, including composition or hierarchy when relevant;
 - one signature move tied to content or interaction;
 - one meaningful tradeoff;
 - one responsive or platform consequence;
 - why it fits the product thesis.
 
-Reject and regenerate when options differ only by palette, font, theme, radius, illustration, or surface treatment. Contrast composition, density, hierarchy, navigation, and interaction where the product allows it.
+If the decision calls for different product approaches, cosmetic variants alone are insufficient. Contrast composition, density, hierarchy, navigation, or interaction where the product allows it; do not manufacture alternatives when a narrower decision is already established.
 
 When the user delegates the choice, recommend one. Do not make a design-inexperienced user choose between unexplained aesthetic labels.
 
 ## Combine carefully
 
-Combine at most two compatible families and give each a clear role:
+Combine families only when each has a clear product-specific role. These pairings illustrate roles, not a limit on the number of influences:
 
 - analytical instrument for the app shell + editorial intelligence for reports;
 - industrial utility for workflow density + warm humanism for guidance;

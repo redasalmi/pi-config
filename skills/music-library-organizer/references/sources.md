@@ -64,4 +64,7 @@ This file records external provenance. The user's original skill and known-libra
   - Pi loads skill names and descriptions at startup and the full `SKILL.md` on demand; focused references support progressive disclosure.
 - [Agent Skills specification](https://agentskills.io/specification)
 
-**Applied:** make the routing description specific, keep mutation-critical rules in the main file, and move metadata, transaction, mapping, and provenance detail into shallow references.
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) (2026-09-11)
+  - Recommends narrow triggers, minimal routers, and completion boundaries that distinguish blocked work from delegated judgment.
+
+**Applied:** keep mode/change-set authority and essential preservation invariants in the root; load inventory, metadata, and the authoritative transaction protocol only when needed. Explicitly delegated naming may choose and state a collision-checked template without a forced Plan stop. Nondelegated naming and all identity, integrity, no-clobber, and recovery requirements remain protected.

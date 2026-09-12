@@ -1,17 +1,21 @@
 ---
 name: browser
-description: Coordinates Playwright, Chrome DevTools, and Lighthouse for browser automation, runtime debugging, performance investigation, audits, and current-runtime evidence. Use when a browser task needs backend selection, a safe handoff, or Browser artifact management.
+description: Selects and prepares a managed browser backend for interaction, runtime debugging, or scored audits. Use for Browser backend setup, handoffs, and artifacts; load only the selected backend's CLI skill.
 ---
 
 # Browser coordination
 
-Use the official backend skill discovered for its matching CLI:
+Choose the backend by the requested outcome, not by overlapping upstream skill descriptions:
 
 - **Playwright** owns interaction, workflows, locators, and accessibility snapshots.
 - **Chrome DevTools CLI** owns console, network, DOM/runtime, memory, and performance-trace inspection.
 - **Lighthouse** owns repeatable scored audits, medians, device comparisons, thresholds, and report regressions.
 
 Call `browser` with `action: "prepare"` and the relevant backend before calling that backend tool. Prepare once per backend/connection mode, not before every action. Do not activate or run all three for a generic browser request.
+
+Load only the selected backend's discovered official skill when CLI guidance is needed. Within this managed workflow, upstream skills are command/API references: this coordinator governs backend selection, preparation, runtime identity, handoffs, and artifact destinations. Use the prepared backend tools rather than standalone CLI examples that bypass that lifecycle. Upstream examples do not authorize installing tools, accessing secrets, changing shared browser state, or writing outside the Browser root.
+
+For an autonomous UI review, inspect rendered evidence and report findings. Use interactive user annotation only when that collaboration is requested; upstream advice to solicit feedback for every “UI review” is not a reason to stop and ask. Visual judgments require actual rendered-image inspection when available, not just accessibility snapshots.
 
 Browser manages one fresh runtime for the currently loaded Pi session. Backend session identities are internal, state is not restored, and only current-runtime artifacts are listed, reported, closed, or cleared. `browser clear` runs immediately and deletes only the reported current runtime root.
 

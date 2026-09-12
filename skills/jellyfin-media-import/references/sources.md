@@ -70,4 +70,7 @@ The active-download gate is a conservative operational safeguard: known partial 
 - [Pi Skills documentation](https://pi.dev/docs/latest/skills)
   - Explains that descriptions determine on-demand skill selection and recommends specific routing metadata.
 
-**Applied:** keep the mutation workflow in `SKILL.md`; move detailed naming and subtitle procedures into focused one-level references; and exclude server administration, playback troubleshooting, transcoding, media acquisition, and broad library cleanup from automatic routing.
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) (2026-09-11)
+  - Recommends focused triggers and minimal root routers with conditional procedures.
+
+**Applied:** keep scope, essential preservation boundaries, routing, and completion in the root. Separate intake/planning from the mutation-only publication procedure, with naming and subtitle details loaded as needed. Preserve no-clobber, byte-verification, authorization, and recovery requirements; a preview does not need the publication itinerary.

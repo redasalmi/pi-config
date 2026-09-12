@@ -15,7 +15,10 @@ This file records provenance. It should not be loaded for routine generation.
   - The main file should remain focused; detailed references can load on demand.
   - The specification recommends keeping `SKILL.md` under 500 lines.
 
-**Applied:** narrow the description around framework-agnostic manual QA and explicitly exclude code review, PR descriptions, automated-test work, and general test strategy. Keep specialized risk and technical-verification detail in one shallow reference.
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) (2026-09-11)
+  - Recommends narrow task triggers, minimal root routers, conditional procedures, and completion of independently authorized phases.
+
+**Applied:** trigger on writing/auditing manual QA documents, not executing verification. Keep evidence authority and mode boundaries in the root; route branch inspection, tester-facing writing, and advanced risk guidance separately. Combined drafting/execution requests can continue under their separate authorization rather than treating the documentation boundary as a permanent stop.
 
 ## IBM Engineering Test Management
 

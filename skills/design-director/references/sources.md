@@ -13,7 +13,10 @@ This file records provenance and deeper rationale. Routine design work should lo
   - Defines the directory layout and frontmatter constraints, recommends a focused `SKILL.md`, and uses referenced files for progressive disclosure.
   - Recommends keeping the main instructions below 500 lines and references shallow and task-specific.
 
-**Applied:** use a specific routing description, keep operational decisions in `SKILL.md`, place detailed platform/QA/creative guidance in focused references, and use only relative one-level resource links.
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) (2026-09-11)
+  - Recommends minimal routers, conditional workflows, and less prescriptive itineraries.
+
+**Applied:** keep mode/posture, boundaries, routing, and completion in the root; separate direction, implementation, platform guidance, and visual QA. Make creative counts optional rather than quotas, and keep severity/inspection details authoritative in visual QA. All operational references are directly discoverable from the root.
 
 ## Accessibility and interaction semantics
 

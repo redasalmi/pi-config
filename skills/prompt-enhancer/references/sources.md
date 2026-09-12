@@ -52,4 +52,7 @@ This provenance file is intentionally separate so routine enhancement does not c
 - [Agent Skills specification](https://agentskills.io/specification)
   - Recommends progressive disclosure, a main `SKILL.md` below 500 lines and roughly 5,000 tokens, shallow relative references, and focused resources loaded only when needed.
 
-**Applied:** narrow this skill to AI prompts rather than ordinary writing or neighboring PR/QA skills; define an unambiguous directive delimiter; keep operational guidance in `SKILL.md`; and move target-specific and evaluation detail into focused references.
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) (2026-09-11)
+  - Recommends concise triggers, minimal root routers, conditional guidance, and explicit completion without unnecessary stopping.
+
+**Applied:** keep transformation authority, operation selection, and output controls in the root; load invocation grammar only for controls and writing/target/evaluation details only for matching requests. Preserve substantive requirements and authorization while removing repeated final-check itineraries. Structural compression is not empirical proof of better model performance.

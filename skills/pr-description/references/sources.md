@@ -90,4 +90,7 @@ This provenance file is not required for routine use.
   - A skill uses one root `SKILL.md`, may contain focused references, and should use progressive disclosure.
   - The main file is recommended to stay below 500 lines, with shallow relative references.
 
-**Applied:** narrow the routing description against code review, implementation, release notes, commit messages, and QA-step generation; keep provider details and provenance in focused references.
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) (2026-09-11)
+  - Recommends task-specific triggers, minimal routers, and conditional disclosure for multiple workflows.
+
+**Applied:** trigger on PR/MR prose rather than generic risk/testing topics. Keep operation authority, template/evidence boundaries, and delivery format in the root; route branch inspection, writing, provider discovery, and external Apply separately. Supplied-text-only critique does not require branch or provider discovery.

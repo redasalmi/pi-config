@@ -156,7 +156,7 @@ Mutagen supports additional containers, but support is not permission to edit bl
 
 ## Filename cleanup
 
-Filename cleanup is independent from tag repair. Follow the existing album convention. If none exists, present a proposed template in Plan rather than choosing silently.
+Filename cleanup is independent from tag repair. Follow the existing album convention. If none exists and the user explicitly delegates naming, state a sensible template in the manifest and apply it only after identity, ordering, sidecar-reference, and collision checks pass. Without that delegation, propose the template and resolve the naming decision before renaming; continue independent authorized work.
 
 A viable template normally contains enough ordering information for human use, for example a track number and title, with a disc prefix for multi-disc releases. Whatever template is selected:
 

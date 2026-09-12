@@ -13,7 +13,10 @@ This file records the evidence behind the skill. It is reference material, not r
 - [Agent Skills specification](https://agentskills.io/)
   - `name` and `description` are the discovery contract; detailed procedures belong in `SKILL.md` and supporting files.
 
-**Applied:** keep the discovery description specific, keep the executable review workflow in `SKILL.md`, and move provenance into an on-demand reference file.
+- [OpenAI: Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) (2026-09-11)
+  - Recommends narrow triggers, minimal root routers, conditional procedures, and completion without unnecessary review gates.
+
+**Applied:** trigger only on a code-change review; keep scope routing, the finding gate, and verdict in the root; load only the selected Git scope procedure and shared assessment guidance. Existing evidence, revision-isolation, and approval boundaries remain intact.
 
 ## GitHub: branch comparison and review workflow
 
