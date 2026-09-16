@@ -20,7 +20,7 @@
 
 - Fix the root cause with the simplest correct solution. Prefer the smallest coherent change, not a smaller diff at the expense of correctness or maintainability. Avoid speculative features, premature optimization, and unnecessary abstractions.
 - Follow existing architecture, naming, dependencies, formatting, package-manager, and error-handling conventions. Reuse suitable platform and repository primitives; explain any necessary departure or new dependency.
-- Write readable code with clear names and straightforward control flow. Add brief comments only for non-obvious intent, constraints, tradeoffs, or required documentation; avoid restating code and decorative banners.
+- Write readable code with clear names and straightforward control flow. Default to no new comments. Add a brief comment only when needed to explain non-obvious intent, constraints, or tradeoffs, or to satisfy an explicit documentation requirement. Do not routinely add comments or docstrings to every type, interface, function, method, or property. Avoid comments that merely restate names, signatures, or code, and avoid decorative banners.
 - Preserve unrelated user changes. Do not perform opportunistic refactoring, cleanup, or formatting; report adjacent issues separately.
 - Preserve behavior, user flows, and integrations unless the request requires a change. Keep necessary changes scoped and report their impact.
 - Do not modify generated files, vendored code, lockfiles, public APIs, schemas, migrations, or project structure unless required by the requested change. Regenerate lockfiles only through the existing package manager.
