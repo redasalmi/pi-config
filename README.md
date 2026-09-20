@@ -71,8 +71,8 @@ npm run check:smoke
 ```
 
 Run an individual suite with `npm run test:browser`, `test:codex`,
-`test:presets`, `test:opencode`, `test:review`, `test:web-access`, or
-`test:notify`.
+`test:presets`, `test:opencode`, `test:review`, `test:web-access`,
+`test:notify`, or `test:workflow`.
 
 The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
 `chrome-devtools` (`chrome-devtools-mcp`), and `lighthouse` (`lighthouse`) on
@@ -87,6 +87,14 @@ remembers it as the startup default for new sessions. It works
 independently of Codex; enabling both preserves service-tier and statusline
 integration. Existing definitions and session records remain compatible.
 Use `/preset status` for configuration sources. Run `npm run test:presets`.
+
+## Multi-role workflow
+
+The [Workflow extension](extensions/workflow/README.md) adds `/flow` for an
+architect → builder → optional reviewer workflow with bounded review corrections. `/workflow-models` assigns
+any available Pi model to each role and saves the review policy. It uses isolated
+model-visible phase contexts while retaining existing Pi tools and permission
+hooks. Run `npm run test:workflow`.
 
 ## Code review
 

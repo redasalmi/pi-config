@@ -1,0 +1,7 @@
+{
+  "architect": { "model": "provider/planner-model" },
+  "builder": { "model": "provider/coder-model" },
+  "reviewer": { "model": "provider/reviewer-model" },
+  "review": "auto",
+  "maxReviewIterations": 2
+}
