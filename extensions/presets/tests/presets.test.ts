@@ -350,7 +350,7 @@ test("Codex alone neither registers nor applies presets and persists manual tier
   codex(resumed.pi);
   await resumed.emit("session_start", { reason: "resume" });
   await resumed.command("codex", "tier");
-  assert.match(resumed.notices.at(-1)!, /Current tier: priority/);
+  assert.match(resumed.notices.at(-1)!, /Configured tier: Fast/);
   assert.equal(
     resumed.entries.some((entry) => entry.type === "custom" && entry.customType === PRESET_ENTRY_TYPE),
     false,
@@ -463,11 +463,11 @@ test("legacy preset records restore tiers and later standalone tier records take
   presetsExtension(h.pi);
   await h.emit("session_start", { reason: "resume" });
   await h.command("codex", "tier");
-  assert.match(h.notices.at(-1)!, /Current tier: standard/);
+  assert.match(h.notices.at(-1)!, /Configured tier: inherit model default/);
   h.entries = legacy;
   await h.emit("session_tree");
   await h.command("codex", "tier");
-  assert.match(h.notices.at(-1)!, /Current tier: priority/);
+  assert.match(h.notices.at(-1)!, /Configured tier: Fast/);
   await h.emit("session_shutdown");
 });
 
