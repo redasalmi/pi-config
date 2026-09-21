@@ -7,14 +7,8 @@ import { createPresets } from "../presets.ts";
 import { registerLifecycle } from "../lifecycle.ts";
 import { loadPresets, readPresetDefault } from "../storage.ts";
 import { PRESET_ENTRY_TYPE } from "../constants.ts";
-import { refreshServiceTierCatalog } from "../../codex/service-tiers.ts";
-import { writeCodexDefaults } from "../../codex/storage.ts";
 import { harness } from "./helpers.ts";
-import { harness as runtimeHarness } from "../../codex/tests/helpers.ts";
-import codex from "../../codex/index.ts";
 import presetsExtension from "../index.ts";
-import { SERVICE_TIER_ENTRY_TYPE } from "../../codex/preset-integration.ts";
-import { isRecord } from "../utils.ts";
 
 let directory: string;
 let previousDirectory: string | undefined;
@@ -27,7 +21,6 @@ beforeEach(async () => {
   globalThis.fetch = async () => {
     throw new Error("Unexpected network request in test");
   };
-  await refreshServiceTierCatalog([]);
 });
 afterEach(async () => {
   globalThis.fetch = originalFetch;
@@ -220,7 +213,6 @@ test("session preset changes update the startup default without changing unrelat
   h.state.presets.custom = { thinkingLevel: "high" };
   await presets.handlePresetCommand("custom", h.ctx);
   assert.equal(JSON.parse(await readFile(join(directory, "presets-state.json"), "utf8")).preset, "custom");
-  await assert.rejects(readFile(join(directory, "codex.json")), { code: "ENOENT" });
   await presets.handlePresetCommand("default none", h.ctx);
   assert.equal(JSON.parse(await readFile(join(directory, "presets-state.json"), "utf8")).preset, null);
   assert.equal(h.state.activePresetName, "custom");
@@ -261,7 +253,7 @@ test("presets accept advertised tiers and reject unsupported tiers atomically", 
   );
   assert.ok(h.pi.getActiveTools().length);
   await presets.applyPreset("tier", { serviceTier: "Fast" }, h.ctx, { persist: true, notify: true });
-  assert.equal(h.codexState.selectedServiceTier, "priority");
+  assert.equal(h.tiers.get(), "priority");
 });
 
 test("preset provenance respects project trust", async () => {
@@ -277,20 +269,12 @@ test("preset provenance respects project trust", async () => {
   assert.match(trusted.sources.custom, /^trusted project:/);
 });
 
-test("Codex settings never drive preset defaults", async () => {
+test("preset defaults come only from presets-state.json", async () => {
   const { h, presets } = setupPresets();
-  await writeFile(join(directory, "codex.json"), JSON.stringify({ preset: "work", quotaWarnings: false }));
-  assert.equal(readPresetDefault().name, undefined, "codex.json must not be a preset source");
-  writeCodexDefaults({ serviceTier: "priority" });
   assert.equal(readPresetDefault().name, undefined);
   await presets.handlePresetCommand("default deep", h.ctx);
   assert.equal(readPresetDefault().name, "deep");
   assert.match(readPresetDefault().source, /presets-state.json$/);
-  assert.equal(
-    JSON.parse(await readFile(join(directory, "codex.json"), "utf8")).preset,
-    "work",
-    "Presets must not rewrite codex.json",
-  );
   await presets.handlePresetCommand("default none", h.ctx);
   assert.equal(readPresetDefault().name, null);
   await writeFile(join(directory, "presets-state.json"), "invalid");
@@ -298,7 +282,7 @@ test("Codex settings never drive preset defaults", async () => {
 });
 
 test("standalone extension owns the command, flag, shortcut, and instructions across providers", async () => {
-  const h = runtimeHarness();
+  const h = harness();
   const other = { ...h.models[1], provider: "other-provider" };
   h.models.push(other);
   await writeFile(
@@ -331,189 +315,18 @@ test("standalone extension owns the command, flag, shortcut, and instructions ac
   await h.emit("session_shutdown");
 });
 
-test("Codex alone neither registers nor applies presets and persists manual tiers independently", async () => {
-  await writeFile(join(directory, "codex.json"), JSON.stringify({ statusline: [], quotaWarnings: false }));
-  const h = runtimeHarness();
-  codex(h.pi);
-  assert.equal(h.commands.has("preset"), false);
-  assert.equal(h.registeredFlags.has("preset"), false);
-  assert.equal(h.shortcuts.size, 0);
-  await h.emit("session_start", { reason: "startup" });
-  assert.equal(h.ctx.model?.id, "test-model");
-  await h.command("codex", "tier Fast");
-  assert.equal(h.entries.at(-1)?.type, "custom");
-  assert.deepEqual((h.entries.at(-1) as { data: unknown }).data, { serviceTier: "priority" });
-  const saved = [...h.entries];
-  await h.emit("session_shutdown");
-  const resumed = runtimeHarness();
-  resumed.entries = saved;
-  codex(resumed.pi);
-  await resumed.emit("session_start", { reason: "resume" });
-  await resumed.command("codex", "tier");
-  assert.match(resumed.notices.at(-1)!, /Configured tier: Fast/);
-  assert.equal(
-    resumed.entries.some((entry) => entry.type === "custom" && entry.customType === PRESET_ENTRY_TYPE),
-    false,
-  );
-  await resumed.emit("session_shutdown");
-});
-
-for (const order of ["codex-first", "presets-first"] as const) {
-  test(`tier initialization preserves an unrestored legacy preset (${order})`, async (t) => {
-    await writeFile(
-      join(directory, "codex.json"),
-      JSON.stringify({ serviceTier: "priority", statusline: [], quotaWarnings: false }),
-    );
-    await writeFile(
-      join(directory, "presets.json"),
-      JSON.stringify({ custom: { tools: ["read"], instructions: "Stay focused" } }),
-    );
-    const h = runtimeHarness();
-    h.pi.appendEntry(PRESET_ENTRY_TYPE, { name: "custom" });
-    for (const extension of order === "codex-first" ? [codex, presetsExtension] : [presetsExtension, codex])
-      extension(h.pi);
-    t.after(() => h.emit("session_shutdown"));
-    await h.emit("session_start", { reason: "resume" });
-    assert.deepEqual(h.pi.getActiveTools(), ["read"]);
-    assert.deepEqual((await h.emit("before_provider_request", { payload: {} })).find(isRecord), {
-      service_tier: "priority",
-    });
-    assert.ok(
-      (await h.emit("before_agent_start", { systemPrompt: "Base" })).some(
-        (result) => isRecord(result) && result.systemPrompt === "Base\n\nStay focused",
-      ),
-    );
-  });
-
-  test(`both extensions preserve tier, baseline, instructions, and branch state (${order})`, async () => {
-    await writeFile(
-      join(directory, "codex.json"),
-      JSON.stringify({ statusline: ["preset", "service-tier"], quotaWarnings: false }),
-    );
-    await writeFile(
-      join(directory, "presets.json"),
-      JSON.stringify({
-        custom: { tools: ["read"], thinkingLevel: "high", serviceTier: "Fast", instructions: "Stay focused" },
-      }),
-    );
-    function load(h: ReturnType<typeof runtimeHarness>) {
-      for (const extension of order === "codex-first" ? [codex, presetsExtension] : [presetsExtension, codex])
-        extension(h.pi);
-    }
-    const h = runtimeHarness();
-    load(h);
-    h.flags.set("preset", "custom");
-    await h.emit("session_start", { reason: "startup" });
-    assert.deepEqual(h.pi.getActiveTools(), ["read"]);
-    assert.match(h.statuses.get("codex")!, /Preset: custom/);
-    assert.match(h.statuses.get("codex")!, /Fast/);
-    const selected = [...h.entries];
-    const request = (await h.emit("before_provider_request", { payload: {} })).find(isRecord);
-    assert.deepEqual(request, { service_tier: "priority" });
-    await h.command("codex", "tier off");
-    assert.equal((await h.emit("before_provider_request", { payload: {} })).some(isRecord), false);
-    await h.command("preset", "status");
-    assert.match(h.notices.at(-1)!, /Service tier: standard/);
-    const lastPreset = h.entries
-      .filter((entry) => entry.type === "custom" && entry.customType === PRESET_ENTRY_TYPE)
-      .at(-1);
-    assert.ok(lastPreset?.type === "custom" && isRecord(lastPreset.data));
-    assert.equal(lastPreset.data.serviceTier, null);
-    h.pi.setThinkingLevel("low");
-    await h.emit("session_shutdown");
-
-    const resumed = runtimeHarness();
-    resumed.entries = [...h.entries];
-    resumed.pi.setThinkingLevel("low");
-    load(resumed);
-    resumed.flags.set("preset", "custom");
-    await resumed.emit("session_start", { reason: "reload" });
-    assert.equal(resumed.pi.getThinkingLevel(), "low");
-    assert.deepEqual(resumed.pi.getActiveTools(), ["read"]);
-    assert.equal((await resumed.emit("before_provider_request", { payload: {} })).some(isRecord), false);
-    assert.ok(
-      (await resumed.emit("before_agent_start", { systemPrompt: "Base" })).some(
-        (result) => isRecord(result) && result.systemPrompt === "Base\n\nStay focused",
-      ),
-    );
-
-    resumed.entries = selected;
-    await resumed.emit("session_tree");
-    assert.deepEqual((await resumed.emit("before_provider_request", { payload: {} })).find(isRecord), {
-      service_tier: "priority",
-    });
-    await resumed.command("preset", "none");
-    assert.equal(resumed.pi.getThinkingLevel(), "medium");
-    assert.ok(resumed.pi.getActiveTools().includes("write"));
-    assert.doesNotMatch(resumed.statuses.get("codex") ?? "", /Preset: custom|Fast/);
-    resumed.entries = [];
-    await resumed.emit("session_tree");
-    assert.equal((await resumed.emit("before_agent_start", { systemPrompt: "Base" })).some(isRecord), false);
-    await resumed.emit("session_shutdown");
-  });
-}
-
-test("legacy preset records restore tiers and later standalone tier records take precedence", async () => {
-  await writeFile(join(directory, "codex.json"), JSON.stringify({ statusline: [], quotaWarnings: false }));
-  const h = runtimeHarness();
-  h.pi.appendEntry(PRESET_ENTRY_TYPE, { version: 2, name: null, tools: ["read"], serviceTier: "priority" });
-  const legacy = [...h.entries];
-  h.pi.appendEntry(SERVICE_TIER_ENTRY_TYPE, { serviceTier: null });
-  codex(h.pi);
-  presetsExtension(h.pi);
-  await h.emit("session_start", { reason: "resume" });
-  await h.command("codex", "tier");
-  assert.match(h.notices.at(-1)!, /Configured tier: inherit model default/);
-  h.entries = legacy;
-  await h.emit("session_tree");
-  await h.command("codex", "tier");
-  assert.match(h.notices.at(-1)!, /Configured tier: Fast/);
-  await h.emit("session_shutdown");
-});
-
-test("disabling Codex after clearing the session tier restores preset tools and instructions", async (t) => {
-  await writeFile(join(directory, "codex.json"), JSON.stringify({ statusline: [], quotaWarnings: false }));
-  await writeFile(
-    join(directory, "presets.json"),
-    JSON.stringify({ custom: { tools: ["read"], instructions: "Stay focused", serviceTier: "Fast" } }),
-  );
-  const h = runtimeHarness();
-  codex(h.pi);
-  presetsExtension(h.pi);
-  await h.emit("session_start", { reason: "startup" });
-  const originalTools = h.pi.getActiveTools();
-  await h.command("preset", "custom");
-  await h.command("codex", "tier off");
-  await h.emit("session_shutdown");
-
-  const resumed = runtimeHarness();
-  resumed.entries = structuredClone(h.entries);
-  presetsExtension(resumed.pi);
-  t.after(() => resumed.emit("session_shutdown"));
-  await resumed.emit("session_start", { reason: "resume" });
-  assert.deepEqual(resumed.pi.getActiveTools(), ["read"]);
-  assert.deepEqual(await resumed.emit("before_agent_start", { systemPrompt: "Base" }), [
-    { systemPrompt: "Base\n\nStay focused" },
-  ]);
-  assert.equal(resumed.notices.length, 0);
-  await resumed.command("preset", "status");
-  assert.match(resumed.notices.at(-1)!, /Service tier: standard/);
-  await resumed.command("preset", "none");
-  assert.deepEqual(resumed.pi.getActiveTools(), originalTools);
-});
-
-test("name-only legacy presets still require Codex when their definition specifies a tier", () => {
+test("name-only legacy presets reject explicit tiers without a service-tier provider", () => {
   const { h, presets } = setupPresets(harness(false));
   h.state.presets.custom = { tools: ["read"], serviceTier: "Fast" };
   h.pi.appendEntry(PRESET_ENTRY_TYPE, { name: "custom" });
   const saved = structuredClone(h.entries);
   assert.equal(presets.restore(h.ctx), true);
-  assert.match(h.notices.at(-1)!, /enable the Codex extension/);
+  assert.match(h.notices.at(-1)!, /enable a service-tier provider/);
   presets.persist(h.ctx);
   assert.deepEqual(h.entries, saved);
 });
 
-test("disabling Codex retains tier-dependent session state and blocks incomplete baseline restoration", async () => {
+test("without a tier provider, tier-dependent session state is retained and baseline restoration blocked", async () => {
   const { h, presets } = setupPresets(harness(false));
   h.pi.appendEntry(PRESET_ENTRY_TYPE, {
     version: 2,
@@ -530,7 +343,7 @@ test("disabling Codex retains tier-dependent session state and blocks incomplete
   const saved = structuredClone(h.entries);
   const tools = h.pi.getActiveTools();
   assert.equal(presets.restore(h.ctx), true);
-  assert.match(h.notices.at(-1)!, /enable the Codex extension/);
+  assert.match(h.notices.at(-1)!, /enable a service-tier provider/);
   presets.persist(h.ctx);
   await presets.clearPreset(h.ctx, { persist: true, notify: true });
   assert.match(h.notices.at(-1)!, /Cannot restore preset baseline/);
@@ -539,26 +352,7 @@ test("disabling Codex retains tier-dependent session state and blocks incomplete
   assert.equal(h.pi.getThinkingLevel(), "medium");
 });
 
-test("presets loaded before Codex capture its startup tier before applying a standard-routing preset", async () => {
-  await writeFile(
-    join(directory, "codex.json"),
-    JSON.stringify({ serviceTier: "priority", statusline: [], quotaWarnings: false }),
-  );
-  await writeFile(join(directory, "presets.json"), JSON.stringify({ standard: { serviceTier: null } }));
-  const h = runtimeHarness();
-  presetsExtension(h.pi);
-  codex(h.pi);
-  h.flags.set("preset", "standard");
-  await h.emit("session_start", { reason: "startup" });
-  assert.equal((await h.emit("before_provider_request", { payload: {} })).some(isRecord), false);
-  await h.command("preset", "none");
-  assert.deepEqual((await h.emit("before_provider_request", { payload: {} })).find(isRecord), {
-    service_tier: "priority",
-  });
-  await h.emit("session_shutdown");
-});
-
-test("without Codex explicit tiers reject atomically while ordinary presets work", async () => {
+test("without a tier provider explicit tiers reject atomically while ordinary presets work", async () => {
   const { h, presets } = setupPresets(harness(false));
   const originalTools = h.pi.getActiveTools();
   assert.equal(
@@ -571,7 +365,7 @@ test("without Codex explicit tiers reject atomically while ordinary presets work
   assert.deepEqual(h.pi.getActiveTools(), originalTools);
   assert.equal(h.pi.getThinkingLevel(), "medium");
   assert.equal(h.entries.length, 0);
-  assert.match(h.notices.at(-1)!, /enable the Codex extension/);
+  assert.match(h.notices.at(-1)!, /no service-tier provider is active/);
   assert.equal(
     await presets.applyPreset("plain", { thinkingLevel: "high", serviceTier: null }, h.ctx, {
       persist: true,

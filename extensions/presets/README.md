@@ -2,8 +2,8 @@
 
 Provider-independent session presets for model selection, thinking levels, tool
 sets, and trusted instructions. This extension owns `/preset`, `--preset`, and
-Ctrl+Shift+U. It works without the Codex extension; service-tier presets require
-Codex's optional integration.
+Ctrl+Shift+U. Service-tier presets require a separate extension that provides
+the optional `presets:service-tier` integration.
 
 ## Commands
 
@@ -68,8 +68,7 @@ New default selections are saved in `presets-state.json` in Pi's agent directory
 
 Missing or malformed state disables the startup default rather than falling back to
 another source. Applying a preset or using `/preset default ...` writes only the
-new file; neither rewrites Codex settings. An explicit `null` disables the
-default.
+new file. An explicit `null` disables the default.
 Existing `presets.json` definitions and `preset-state` session records need no
 migration, and existing sessions are not rewritten during this extraction.
 
@@ -85,26 +84,26 @@ when the baseline is available. Name-only legacy records have no recoverable
 baseline: clearing them retains current model/tools and explains the limitation.
 Unknown baseline tools or unavailable models are reported rather than silently dropped.
 
-## Optional Codex integration
+## Optional service-tier integration
 
-With both extensions enabled, Codex's existing `preset` footer field and `/codex status`
-reflect the selection. Codex continues to own `/codex tier`, tier validation, provider
-request routing, and tier persistence. Either extension can load first.
+An extension can register a service-tier provider by answering the
+`presets:service-tier` event with an integration. When present, preset selection
+is reflected through the `presets:changed` event, the provider resolves and
+applies tiers, and it can ask presets to persist through `presets:persist`.
 
 A preset may specify `serviceTier` as an advertised ID or display name; `null`
 clears it. No model-family guesses or hardcoded Fast routing values are sent.
-Without Codex, explicit non-null tiers are rejected and saved selections needing
-a tier remain unresolved rather than silently losing their routing configuration.
+Without a provider, explicit non-null tiers are rejected and saved selections
+needing a tier remain unresolved rather than silently losing their routing
+configuration.
 
-The integration uses Pi's event bus (`presets:service-tier`, `presets:changed`,
-`presets:persist`). Presets has no runtime imports from Codex and never registers
-Codex commands, performs account requests, or modifies provider payloads.
+Presets has no runtime imports from the provider and never registers provider
+commands, performs account requests, or modifies provider payloads.
 
 ## Verification
 
 ```bash
 npm run test:presets
-npm run test:codex
 npm run typecheck
 ```
 

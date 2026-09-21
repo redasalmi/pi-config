@@ -62,31 +62,18 @@ suite, stopping on the first failure:
 npm run check
 ```
 
-`npm run check` needs no network access or native notifications. The Browser
-smoke tests are opt-in because they require `playwright-cli`, `chrome-devtools`,
-and Chrome to be installed:
+`npm run check` needs no network access or native notifications.
 
-```bash
-npm run check:smoke
-```
-
-Run an individual suite with `npm run test:browser`, `test:codex`,
-`test:presets`, `test:opencode`, `test:review`, `test:web-access`,
-`test:notify`, or `test:workflow`.
-
-The Browser extension separately requires `playwright-cli` (`@playwright/cli`),
-`chrome-devtools` (`chrome-devtools-mcp`), and `lighthouse` (`lighthouse`) on
-`PATH` for the corresponding backends. These external CLIs are not installed by
-this package.
+Run an individual suite with `npm run test:presets`, `test:review`, or
+`test:workflow`.
 
 ## Presets
 
 The [Presets extension](extensions/presets/README.md) owns `/preset`, `--preset`,
 and Ctrl+Shift+U for model/thinking/tools/instructions presets. Selecting a preset
-remembers it as the startup default for new sessions. It works
-independently of Codex; enabling both preserves service-tier and statusline
-integration. Existing definitions and session records remain compatible.
-Use `/preset status` for configuration sources. Run `npm run test:presets`.
+remembers it as the startup default for new sessions. Existing definitions and
+session records remain compatible. Use `/preset status` for configuration
+sources. Run `npm run test:presets`.
 
 ## Multi-role workflow
 
@@ -103,42 +90,6 @@ picker over the [code-review skill](skills/code-review/SKILL.md). Choose a base
 branch, uncommitted changes, a single commit, or custom instructions; the skill's
 procedure is injected into the current thread with the active model. Reviews are
 read-only and refuse to start while the agent is busy. Run `npm run test:review`.
-
-## Codex workflow
-
-The [Codex extension](extensions/codex/README.md) adds service tiers and quota
-reporting.
-Use `/codex status` for current state; preset selection belongs to Presets.
-Run its isolated regression tests with `npm run test:codex`.
-
-## OpenCode Go
-
-The [OpenCode extension](extensions/opencode/README.md) adds remaining-quota
-reporting, reset times, low-quota warnings, branch-local usage statistics, and a
-configurable Go footer. It reuses Pi's Go provider and authentication; model
-selection stays with Pi. Start with `/opencode status` or `/opencode usage`.
-Run its isolated regression tests with `npm run test:opencode`.
-
-## Notifications
-
-The Notify extension sends terminal notifications when an interactive run fully
-settles. Notifications include the session name, or the project folder name when
-unnamed. It supports iTerm2, Ghostty, WezTerm, rxvt-unicode, Kitty, and Windows
-Terminal (using PowerShell for Windows toasts).
-
-Notifications for blocking extension UI prompts are enabled by default. Prompt
-contents are not included in notifications. To disable them, set `notifyPrompts`
-to `false` in `~/.pi/agent/notify.json` (or `notify.json` inside your
-`PI_CODING_AGENT_DIR` override):
-
-```json
-{
-  "notifyPrompts": false
-}
-```
-
-Use `/reload` after editing the setting. Missing settings default to `true`;
-invalid settings also fall back to `true` with a UI warning.
 
 ## Optional: shared agent instructions
 

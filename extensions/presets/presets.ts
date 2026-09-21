@@ -105,7 +105,11 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     const original = state.originalState;
     if (original) {
       if (original.serviceTier && !serviceTier()) {
-        notify(ctx, "Cannot restore preset baseline: enable the Codex extension to restore its service tier", "error");
+        notify(
+          ctx,
+          "Cannot restore preset baseline: no service-tier provider is active to restore its service tier",
+          "error",
+        );
         return;
       }
       const invalid = invalidTools(original.tools);
@@ -162,7 +166,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     }
     const integration = serviceTier();
     if (preset.serviceTier && !integration) {
-      notify(ctx, `Preset "${name}": enable the Codex extension to use service tiers`, "error");
+      notify(ctx, `Preset "${name}": no service-tier provider is active to apply the requested tier`, "error");
       return false;
     }
     const tier = integration?.resolve(model, preset.serviceTier ?? undefined);
@@ -210,7 +214,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
       state.presetSelectionSource = `session (unresolved: ${data.name ?? "none"})`;
       notify(
         ctx,
-        "Saved preset requires service tiers; enable the Codex extension, or apply a preset with serviceTier: null. Saved state retained.",
+        "Saved preset requires service tiers; enable a service-tier provider, or apply a preset with serviceTier: null. Saved state retained.",
         "error",
       );
       return true;
@@ -233,7 +237,7 @@ export function createPresets(pi: ExtensionAPI, state: PresetsState, deps: Prese
     state.activePreset = preset;
     if (tools) pi.setActiveTools(tools);
     if (data.serviceTier === null || typeof data.serviceTier === "string") {
-      // Codex independently restores the newest tier record, including manual /codex tier changes.
+      // The tier provider independently restores the newest tier record, including manual tier changes.
       state.selectedServiceTier = data.serviceTier ?? undefined;
     }
     // Pi restores model/thinking entries itself. Do not overwrite manual overrides.
