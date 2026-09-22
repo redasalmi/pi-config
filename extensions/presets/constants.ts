@@ -13,21 +13,15 @@ export const DEFAULT_PRESETS: PresetsConfig = {
     thinkingLevel: "high",
     description: "GPT-6 Astra with high reasoning",
   },
-  quick: {
-    provider: "openai-codex",
-    model: "gpt-5.6-luna",
-    thinkingLevel: "high",
-    description: "Fast everyday tasks",
-  },
   work: {
     provider: "openai-codex",
-    model: "gpt-5.6-luna",
+    model: "gpt-6-luna",
     thinkingLevel: "xhigh",
     description: "Normal implementation work",
   },
   deep: {
     provider: "openai-codex",
-    model: "gpt-5.6-sol",
+    model: "gpt-6-sol",
     thinkingLevel: "high",
     description: "Difficult reasoning and investigation",
   },
