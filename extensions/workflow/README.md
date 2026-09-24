@@ -1,6 +1,6 @@
 # Multi-role coding workflow
 
-An opt-in Pi extension: Architect → Builder → optional Reviewer. Uses Pi's existing runtime, tools (including MCP and other extensions), skills, and model registry through the public Pi 0.85 APIs. No extra dependencies or separate agent harness.
+An opt-in Pi extension: Architect → Builder → optional Reviewer. Uses Pi's existing runtime, tools (including MCP and other extensions), skills, and model registry through the public Pi APIs. No extra dependencies or separate agent harness.
 
 ## Install and run
 

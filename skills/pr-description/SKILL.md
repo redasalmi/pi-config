@@ -13,6 +13,8 @@ Produce reviewer-focused prose explaining the outcome, supported purpose, import
 
 ## Select the operation
 
+Infer the operation from the request, or honor `operation=draft|refresh|critique|apply`.
+
 - **Draft:** create the requested title, body, or both.
 - **Refresh:** reconcile existing prose with current evidence, preserving valid human rationale and context.
 - **Critique:** identify accuracy, completeness, or reviewer-clarity problems; do not rewrite unless asked.

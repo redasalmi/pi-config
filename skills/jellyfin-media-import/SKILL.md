@@ -1,6 +1,6 @@
 ---
 name: jellyfin-media-import
-description: Imports staged local movies, episodes, and anime into a Jellyfin/Jellycat library, with sidecars and English/French subtitles by default. Use for root-level intake, previews, or explicitly named existing-item maintenance; not media acquisition or broad cleanup.
+description: Imports staged local movies, episodes, and anime into a Jellyfin library, with sidecars and English/French subtitles by default. Use for root-level intake, previews, or explicitly named existing-item maintenance; not media acquisition or broad cleanup.
 compatibility: Requires local filesystem access and ffprobe. Subtitle lookup needs an authorized provider or user-supplied source. Do not install missing tools automatically. POSIX-oriented; verify safe publication support on the target filesystem.
 metadata:
   author: local

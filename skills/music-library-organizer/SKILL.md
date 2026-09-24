@@ -28,7 +28,6 @@ Follow explicit user identity/instructions, verified library conventions, trustw
 - **Plan and Apply:** read [references/inventory-and-plan.md](references/inventory-and-plan.md) for canonical scope, stability gates, inventory, identity confidence, sidecar handling, and manifest invariants. For Verify, use the portions needed to establish the requested state.
 - **Organization, filename cleanup, or tag editing:** read relevant sections of [references/metadata-and-layout.md](references/metadata-and-layout.md). It owns release-aware layout, native tag representations, format preservation, naming policy, and checksums.
 - **Before any Apply mutation:** read and follow [references/transaction-and-validation.md](references/transaction-and-validation.md). It owns journals, preflight, staging, publication, tag/audio validation, source cleanup, and recovery.
-- **An exact candidate from the previously researched collection:** consult [references/known-library-mappings.md](references/known-library-mappings.md) only for that candidate. Historical mappings are scoped evidence, not fuzzy defaults or permission to invent missing values.
 
 Filename cleanup follows an established convention. If none exists and the user explicitly delegates naming, state a sensible template in the manifest and proceed when identity, ordering, sidecar references, and collision checks are sound. Otherwise propose the template and resolve that decision before renaming. A naming question must not stop independent authorized work.
 

@@ -7,8 +7,12 @@ import { stripVTControlCharacters } from "node:util";
 import { Markdown, visibleWidth } from "@earendil-works/pi-tui";
 import {
   createAssistantMessageEventStream,
+  getCurrentSystemPrompt,
+  getCurrentTools,
   InMemoryCredentialStore,
   type AssistantMessage,
+  type JsonRepresentation,
+  type ToolCall,
 } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
@@ -122,7 +126,7 @@ for (const scenario of [
           unresolvedIssues: [],
           reviewReasons: [],
         };
-        const handoffs: Record<string, Handoff> = {
+        const handoffs: Record<string, JsonRepresentation<Handoff>> = {
           planner: { kind: "plan", plan },
           worker: { kind: "result", result: { ...result, validationStatus: "passed" } },
           reviewer: { kind: "review", issues: [] },
@@ -144,20 +148,20 @@ for (const scenario of [
             requests.push({
               model: model.id,
               context: JSON.stringify(context.messages),
-              system: context.systemPrompt ?? "",
-              tools: context.tools?.map((tool) => tool.name) ?? [],
+              system: getCurrentSystemPrompt(context.messages),
+              tools: getCurrentTools(context.messages).map((tool) => tool.name),
             });
             const turn = requests.filter((request) => request.model === model.id).length;
             const first = turn === 1;
             if (scenario === "long-phase" && first) t.mock.timers.tick(16 * 60_000);
-            const featureCalls = [
+            const featureCalls: Pick<ToolCall, "name" | "arguments">[] = [
               { name: "mcp", arguments: {} },
               { name: "mcp_docs", arguments: {} },
               { name: "mcp_restricted", arguments: {} },
               { name: "read", arguments: { path: skillPath } },
               { name: "workflow_handoff", arguments: handoffs[model.id] },
             ];
-            const call =
+            const call: Pick<ToolCall, "name" | "arguments"> =
               scenario === "pi-features"
                 ? featureCalls[turn - 1]
                 : scenario === "shell-inspection" && first && model.id !== "worker"

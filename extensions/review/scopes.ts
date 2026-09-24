@@ -69,21 +69,16 @@ export function buildDirective(scope: ReviewScope): string {
   const lines = ["## Review invocation", ""];
   switch (scope.mode) {
     case "base":
-      lines.push("- Mode: base", `- Base ref: ${scope.base}`, `- Head ref: ${scope.head}`);
+      lines.push(`base=${scope.base} head=${scope.head}`);
       break;
     case "commit":
-      lines.push("- Mode: commit", `- Commit ref: ${scope.commit}`);
+      lines.push(`commit=${scope.commit}`);
       break;
     case "uncommitted":
-      lines.push("- Mode: uncommitted");
+      lines.push("uncommitted");
       break;
     case "custom":
-      lines.push(
-        "- Mode: custom",
-        "- Base ref: <resolve the repository default>",
-        "- Head ref: HEAD",
-        `- Review focus: ${scope.focus}`,
-      );
+      lines.push("head=HEAD", `Review focus: ${scope.focus}`);
       break;
   }
   lines.push("", "Apply the code review procedure above to this scope.");

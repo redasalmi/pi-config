@@ -2,7 +2,7 @@
 
 Use only when the user explicitly authorizes creating or updating a specific PR/MR. Drafting text alone never authorizes a provider write.
 
-## 10. Apply an external update safely
+## Apply an external update safely
 
 Only when explicitly requested:
 

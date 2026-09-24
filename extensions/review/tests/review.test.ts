@@ -77,9 +77,9 @@ test("missing or unknown modes return an actionable error", () => {
 });
 
 test("directives name the mode, refs, and focus", () => {
-  assert.match(buildDirective({ mode: "base", base: "main", head: "feature" }), /Base ref: main/);
-  assert.match(buildDirective({ mode: "uncommitted" }), /Mode: uncommitted/);
-  assert.match(buildDirective({ mode: "commit", commit: "abc123" }), /Commit ref: abc123/);
+  assert.match(buildDirective({ mode: "base", base: "main", head: "feature" }), /base=main head=feature/);
+  assert.match(buildDirective({ mode: "uncommitted" }), /^uncommitted$/m);
+  assert.match(buildDirective({ mode: "commit", commit: "abc123" }), /commit=abc123/);
   assert.match(buildDirective({ mode: "custom", focus: "check auth" }), /Review focus: check auth/);
 });
 
@@ -93,7 +93,7 @@ test("a direct scope sends the review directive through native skill expansion",
   await h.run("uncommitted");
   assert.equal(h.messages.length, 1);
   assert.match(h.messages[0], /^\/skill:code-review ## Review invocation/);
-  assert.match(h.messages[0], /Mode: uncommitted/);
+  assert.match(h.messages[0], /^uncommitted$/m);
   assert.deepEqual(h.messageOptions[0], { expandPromptTemplates: true });
   assert.equal(h.notices.length, 0);
 });
@@ -111,8 +111,7 @@ test("the menu resolves a base scope through select and input", async () => {
   h.state.input = "develop";
   await h.run();
   assert.equal(h.messages.length, 1);
-  assert.match(h.messages[0], /Base ref: develop/);
-  assert.match(h.messages[0], /Head ref: HEAD/);
+  assert.match(h.messages[0], /base=develop head=HEAD/);
 });
 
 test("cancelling the menu or leaving a required input blank sends nothing", async () => {
@@ -134,7 +133,7 @@ test("an empty commit input defaults to HEAD", async () => {
   h.state.select = REVIEW_MENU[2].label;
   h.state.input = "";
   await h.run();
-  assert.match(h.messages[0] ?? "", /Commit ref: HEAD/);
+  assert.match(h.messages[0] ?? "", /commit=HEAD/);
 });
 
 test("a busy agent is asked to wait instead of queueing a review", async () => {

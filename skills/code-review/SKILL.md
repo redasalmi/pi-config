@@ -23,7 +23,7 @@ Infer the scope from the request. Ask only when competing interpretations materi
 
 Without scope keys, use base comparison with `head=HEAD`; resolve the base from evidence, never assume `main`. Pin commit IDs once and use target-side files throughout. Do not switch branches or mix unrelated working-tree changes into a committed comparison.
 
-References are relative to the installed `code-review` skill directory, including when this body is injected by `/review`. Locate its `SKILL.md` through the available skill listing if the injecting command did not supply the path.
+References are relative to the `code-review` skill directory.
 
 ## Review and verify
 

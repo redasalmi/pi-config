@@ -28,7 +28,7 @@ picker, and the mode names autocomplete.
 - Verifies refs with `git rev-parse` before sending anything.
 - Sends `/skill:code-review` through Pi's native skill expansion, which injects
   the skill body with its location so the skill's relative references resolve.
-  The `## Review invocation` block naming the resolved mode and refs follows as
+  The `## Review invocation` block naming the resolved scope keys follows as
   the request. If the skill is unavailable, `/review` reports an error and sends
   nothing.
 

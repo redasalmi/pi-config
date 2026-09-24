@@ -35,7 +35,15 @@ Never delete a staging file or directory that may contain the only remaining cop
 
 ### No-clobber move or copy
 
-For a same-filesystem move, use an atomic operation that fails if the destination exists. Never use a default rename that may replace it. Verify that the destination filesystem supports safe no-clobber publication before moving sources into staging or copying payloads. If it does not, stop the affected unit, preserve its source and any existing staging state, and report the missing capability. Staged copying handles cross-filesystem transfer; it does not replace the required publication primitive.
+Use this primitive for every publication rename, file or directory:
+
+```bash
+mv --no-copy --update=none-fail -T -- "$STAGED" "$FINAL"
+```
+
+It exits nonzero if `$FINAL` exists, refuses a cross-filesystem copy-and-delete fallback, and never moves into an existing directory. Treat any nonzero exit as a failed publication. Never use `mv -n`/`--no-clobber` (it skips an existing destination silently with exit 0) or `mv` without `-T` (it moves the source inside an existing directory). After publishing, confirm `$FINAL` has the staged object's device and inode before removing any source.
+
+Before moving sources into staging or copying payloads, confirm support with `mv --help | grep -q none-fail` (recent GNU coreutils). If it is unavailable, stop the affected unit, preserve its source and any existing staging state, and report the missing capability. Staged copying handles cross-filesystem transfer; it does not replace the required publication primitive.
 
 For any copy, or for a cross-filesystem move:
 
@@ -44,7 +52,7 @@ For any copy, or for a cross-filesystem move:
 3. Preserve ordinary timestamps and permissions where practical; flush the staged file when supported.
 4. Confirm the source did not change during copying.
 5. Verify equal byte counts **and** byte identity with a cryptographic hash or full comparison; then compare the relevant `ffprobe` signature.
-6. Publish the staged file through an atomic no-clobber rename.
+6. Publish the staged file with the no-clobber primitive above.
 7. For a move, remove the source only after the final file is present and verified. For a copy, retain it and report the copy explicitly.
 
 Size equality alone is insufficient. Never expose a partial file under its final name. On failure, keep the source when it still exists. Remove only staging data created by this run after proving it is not the sole remaining copy; otherwise preserve it and report the precise state.

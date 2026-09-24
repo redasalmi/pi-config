@@ -20,7 +20,7 @@ Do not silently assume `main` when the repository establishes another default. R
 ```bash
 git status --short
 BASE_SHA=$(git rev-parse --verify --end-of-options "${BASE_REF}^{commit}")
-HEAD_SHA=$(git rev-parse --verify --end-of-options "${HEAD_REF}^{commit}")
+HEAD_SHA=$(git rev-parse --verify --end-of-options "${HEAD_REF:-HEAD}^{commit}")
 MERGE_BASE=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
 
 git log --oneline "$BASE_SHA..$HEAD_SHA"

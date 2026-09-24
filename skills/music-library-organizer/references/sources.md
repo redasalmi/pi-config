@@ -1,6 +1,6 @@
 # Music Library Organizer Sources and Applied Decisions
 
-This file records external provenance. The user's original skill and known-library mappings remain the primary basis for the workflow; these sources support the safety and interoperability changes in version 2.0.0.
+This file records external provenance for the workflow's safety and interoperability rules.
 
 **Last source verification:** 2026-09-04. Re-check Mutagen, ffprobe, MusicBrainz, target-player, and Agent Skills behavior during major revisions.
 

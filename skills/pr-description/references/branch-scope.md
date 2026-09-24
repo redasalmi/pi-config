@@ -2,13 +2,13 @@
 
 Read when deriving claims from a branch or PR/MR comparison, not for a supplied-text-only wording critique.
 
-## 3. Resolve an immutable branch scope
+## Resolve an immutable branch scope
 
 Preferred invocation:
 
 ```text
 /skill:pr-description base=main head=my-feature
-/skill:pr-description pr=123 mode=refresh
+/skill:pr-description pr=123 operation=refresh
 ```
 
 **Base** is the target ref; **head** is the proposed ref. If a specific PR/MR is supplied and provider metadata is available, prefer its exact repository, base, head, and commit OIDs over guesses from the current checkout.
@@ -23,7 +23,7 @@ Never silently assume `main`. Confirm the repository and pin both commits once:
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
 BASE_SHA=$(git rev-parse --verify --end-of-options "${BASE_REF}^{commit}")
-HEAD_SHA=$(git rev-parse --verify --end-of-options "${HEAD_REF}^{commit}")
+HEAD_SHA=$(git rev-parse --verify --end-of-options "${HEAD_REF:-HEAD}^{commit}")
 MERGE_BASE=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
 ```
 
@@ -39,7 +39,12 @@ git diff --stat "$MERGE_BASE" "$HEAD_SHA"
 git diff --numstat "$MERGE_BASE" "$HEAD_SHA"
 git diff --name-status --find-renames "$MERGE_BASE" "$HEAD_SHA"
 git diff --summary --submodule=log "$MERGE_BASE" "$HEAD_SHA"
-git diff --find-renames --find-copies "$MERGE_BASE" "$HEAD_SHA"
+```
+
+Then read path-limited diffs for the groups that matter, rather than the whole patch at once:
+
+```bash
+git diff --find-renames --find-copies "$MERGE_BASE" "$HEAD_SHA" -- <path>
 ```
 
 `git log base..head` lists head-only commits. The merge-base-to-head diff shows what the proposed branch introduces. Do not transfer dotted-notation meaning between commands.

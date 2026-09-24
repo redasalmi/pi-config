@@ -205,7 +205,7 @@ Check exact, case-folded, and Unicode-normalization-equivalent collisions. Never
 
 ## Commit and report
 
-After validation, move the staged payload to the final path with no-clobber semantics. For paired subtitles, ensure both final names are free before committing either; if a safe all-or-nothing commit is unavailable, keep both staged and report the blocker rather than leave a lone member.
+After validation, move the staged payload to the final path with the no-clobber primitive from [publication.md](publication.md). For paired subtitles, ensure both final names are free before committing either; if a safe all-or-nothing commit is unavailable, keep both staged and report the blocker rather than leave a lone member.
 
 Report per video and language:
 

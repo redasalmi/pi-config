@@ -45,7 +45,15 @@ Validate the complete unit before publishing any member; when staging is require
 - **Single file:** publish with an atomic no-clobber rename, except for an explicitly scoped tag-only replacement using the backup protocol below.
 - **Additions to an existing folder:** retain all sources, stage and validate all members, and recheck every final path before publishing any member. Journal each member's publication and verification separately and publish with per-file no-clobber operations. This is recoverable, not atomically visible as a group; an interruption can leave a partial destination.
 
-Verify support for the required publication primitive before staging. If safe publication is unavailable, preserve sources and any existing staging state and stop that unit. Remove no original source or backup until the whole unit passes final validation.
+Use this primitive for every no-clobber rename, file or directory:
+
+```bash
+mv --no-copy --update=none-fail -T -- "$STAGED" "$FINAL"
+```
+
+It exits nonzero if `$FINAL` exists, refuses a cross-filesystem copy-and-delete fallback, and never moves into an existing directory. Treat any nonzero exit as a failed publication. Never use `mv -n`/`--no-clobber` (it skips an existing destination silently with exit 0) or `mv` without `-T` (it moves the source inside an existing directory). After publishing, confirm `$FINAL` has the staged object's device and inode before removing any source or backup.
+
+Verify support before staging with `mv --help | grep -q none-fail` (recent GNU coreutils). If safe publication is unavailable, preserve sources and any existing staging state and stop that unit. Remove no original source or backup until the whole unit passes final validation.
 
 ## Source preflight
 
@@ -62,7 +70,7 @@ If any material property changed, rebuild the unit's plan rather than continuing
 
 ## Move-only, same filesystem
 
-When no file contents or internal references change and all final parents exist safely, publish with an atomic no-clobber rename where supported.
+When no file contents or internal references change and all final parents exist safely, publish with the no-clobber primitive above.
 
 Do not use a command or API that replaces an existing path. Do not treat a preexisting directory as merge permission. Revalidate the final path and contents after rename.
 

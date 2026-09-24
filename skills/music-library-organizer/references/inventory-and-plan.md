@@ -93,8 +93,6 @@ Prefer:
 
 Open the actual source. Search-result snippets are not evidence. Respect API identification, authentication, and rate limits. Do not upload audio, fingerprints, hashes, private paths, or library inventories to a service without user authorization. Do not add a MusicBrainz, Discogs, ISRC, barcode, or catalog identifier unless the exact entity was verified.
 
-For exact candidates from the previously researched collection, use the root skill's known-library-mappings reference. Those mappings are scoped evidence, not fuzzy defaults or permission to fill details absent from the file.
-
 ## Treat sidecars and referenced paths as data
 
 Move a sidecar only when its release or track association is unambiguous. A shared cover or booklet belongs to the release, not automatically to one loose track.
