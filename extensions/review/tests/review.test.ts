@@ -3,8 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, mock, test } from "node:test";
-import { buildDirective, parseReviewArgs, REVIEW_MENU_OPTIONS } from "../scopes.ts";
-import { stripFrontmatter } from "../skill.ts";
+import { buildDirective, getReviewCompletions, parseReviewArgs, REVIEW_MENU } from "../scopes.ts";
 import review from "../index.ts";
 import { harness } from "./helpers.ts";
 
@@ -55,10 +54,18 @@ test("commit and uncommitted modes parse their scope", () => {
 });
 
 test("custom mode keeps the full free-text focus", () => {
-  assert.deepEqual(parseReviewArgs("custom check auth and migrations"), {
+  assert.deepEqual(parseReviewArgs("custom check auth\n  and migrations"), {
     kind: "scope",
-    scope: { mode: "custom", focus: "check auth and migrations" },
+    scope: { mode: "custom", focus: "check auth\n  and migrations" },
   });
+});
+
+test("mode names autocomplete only for the first argument", () => {
+  assert.deepEqual(
+    getReviewCompletions("c")?.map((item) => item.value),
+    ["commit", "custom"],
+  );
+  assert.equal(getReviewCompletions("base "), null);
 });
 
 test("missing or unknown modes return an actionable error", () => {
@@ -76,28 +83,31 @@ test("directives name the mode, refs, and focus", () => {
   assert.match(buildDirective({ mode: "custom", focus: "check auth" }), /Review focus: check auth/);
 });
 
-test("frontmatter is stripped without touching the body", () => {
-  assert.equal(stripFrontmatter("---\nname: x\n---\n\nBody\n"), "Body\n");
-  assert.equal(stripFrontmatter("Body only\n"), "Body only\n");
-});
-
 function register(h = harness({ skillPath })) {
   review(h.pi);
   return h;
 }
 
-test("a direct scope injects the skill plus the review directive", async () => {
+test("a direct scope sends the review directive through native skill expansion", async () => {
   const h = register();
   await h.run("uncommitted");
   assert.equal(h.messages.length, 1);
-  assert.match(h.messages[0], /Review procedure body\./);
+  assert.match(h.messages[0], /^\/skill:code-review ## Review invocation/);
   assert.match(h.messages[0], /Mode: uncommitted/);
+  assert.deepEqual(h.messageOptions[0], { expandPromptTemplates: true });
   assert.equal(h.notices.length, 0);
+});
+
+test("unknown refs are reported before anything is sent", async () => {
+  const h = register(harness({ skillPath, validRefs: false }));
+  await h.run("base nope");
+  assert.equal(h.messages.length, 0);
+  assert.match(h.notices[0]?.message ?? "", /Unknown git commit or ref "nope"/);
 });
 
 test("the menu resolves a base scope through select and input", async () => {
   const h = register();
-  h.state.select = REVIEW_MENU_OPTIONS[0];
+  h.state.select = REVIEW_MENU[0].label;
   h.state.input = "develop";
   await h.run();
   assert.equal(h.messages.length, 1);
@@ -112,10 +122,19 @@ test("cancelling the menu or leaving a required input blank sends nothing", asyn
   assert.equal(cancelled.messages.length, 0);
 
   const blank = register();
-  blank.state.select = REVIEW_MENU_OPTIONS[2];
+  blank.state.select = REVIEW_MENU[0].label;
   blank.state.input = "   ";
   await blank.run();
   assert.equal(blank.messages.length, 0);
+  assert.equal(blank.notices[0]?.type, "error");
+});
+
+test("an empty commit input defaults to HEAD", async () => {
+  const h = register();
+  h.state.select = REVIEW_MENU[2].label;
+  h.state.input = "";
+  await h.run();
+  assert.match(h.messages[0] ?? "", /Commit ref: HEAD/);
 });
 
 test("a busy agent is asked to wait instead of queueing a review", async () => {

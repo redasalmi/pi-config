@@ -1,41 +1,49 @@
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
+
 export type ReviewScope =
   | { mode: "base"; base: string; head: string }
   | { mode: "commit"; commit: string }
   | { mode: "uncommitted" }
-  | { mode: "custom"; focus: string; base?: string; head?: string };
-
-export type ReviewChoice = "base" | "uncommitted" | "commit" | "custom";
+  | { mode: "custom"; focus: string };
 
 export type ParseOutcome =
   | { kind: "scope"; scope: ReviewScope }
   | { kind: "menu" }
   | { kind: "error"; message: string };
 
-// Order is the menu order. Each label maps to a ReviewChoice by index.
-export const REVIEW_MENU_OPTIONS = [
-  "Against a base branch (current branch vs a base)",
-  "Uncommitted changes (staged, unstaged, untracked)",
-  "A specific commit",
-  "Custom review instructions",
+export const REVIEW_MENU = [
+  { choice: "base", label: "Against a base branch (current branch vs a base)" },
+  { choice: "uncommitted", label: "Uncommitted changes (staged, unstaged, untracked)" },
+  { choice: "commit", label: "A specific commit" },
+  { choice: "custom", label: "Custom review instructions" },
 ] as const;
 
-export const REVIEW_CHOICES: readonly ReviewChoice[] = ["base", "uncommitted", "commit", "custom"];
+export const USAGE =
+  "Usage: /review [base <ref> [head]] | commit <ref> | uncommitted (or worktree) | custom <instructions>";
 
-export const USAGE = "Usage: /review [base <ref> [head]] | commit <ref> | uncommitted | custom <instructions>";
+export function getReviewCompletions(prefix: string): AutocompleteItem[] | null {
+  if (/\s/.test(prefix)) return null;
+  const items = REVIEW_MENU.filter(({ choice }) => choice.startsWith(prefix)).map(({ choice, label }) => ({
+    value: choice,
+    label: choice,
+    description: label,
+  }));
+  return items.length ? items : null;
+}
 
 export function parseReviewArgs(raw: string): ParseOutcome {
-  const tokens = raw.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return { kind: "menu" };
+  const [, mode, rest = ""] = raw.trim().match(/^(\S+)\s*([\s\S]*)$/) ?? [];
+  if (!mode) return { kind: "menu" };
 
-  const [mode, ...rest] = tokens;
+  const tokens = rest.split(/\s+/).filter(Boolean);
   switch (mode) {
     case "base": {
-      const base = rest[0];
+      const base = tokens[0];
       if (!base) return { kind: "error", message: `Missing base ref. ${USAGE}` };
-      return { kind: "scope", scope: { mode: "base", base, head: rest[1] ?? "HEAD" } };
+      return { kind: "scope", scope: { mode: "base", base, head: tokens[1] ?? "HEAD" } };
     }
     case "commit": {
-      const commit = rest[0];
+      const commit = tokens[0];
       if (!commit) return { kind: "error", message: `Missing commit ref. ${USAGE}` };
       return { kind: "scope", scope: { mode: "commit", commit } };
     }
@@ -43,13 +51,18 @@ export function parseReviewArgs(raw: string): ParseOutcome {
     case "worktree":
       return { kind: "scope", scope: { mode: "uncommitted" } };
     case "custom": {
-      const focus = rest.join(" ").trim();
-      if (!focus) return { kind: "error", message: `Missing review instructions. ${USAGE}` };
-      return { kind: "scope", scope: { mode: "custom", focus } };
+      if (!rest) return { kind: "error", message: `Missing review instructions. ${USAGE}` };
+      return { kind: "scope", scope: { mode: "custom", focus: rest } };
     }
     default:
       return { kind: "error", message: `Unknown review mode "${mode}". ${USAGE}` };
   }
+}
+
+export function scopeRefs(scope: ReviewScope): string[] {
+  if (scope.mode === "base") return [scope.base, scope.head];
+  if (scope.mode === "commit") return [scope.commit];
+  return [];
 }
 
 export function buildDirective(scope: ReviewScope): string {
@@ -67,8 +80,8 @@ export function buildDirective(scope: ReviewScope): string {
     case "custom":
       lines.push(
         "- Mode: custom",
-        `- Base ref: ${scope.base ?? "<resolve the repository default>"}`,
-        `- Head ref: ${scope.head ?? "HEAD"}`,
+        "- Base ref: <resolve the repository default>",
+        "- Head ref: HEAD",
         `- Review focus: ${scope.focus}`,
       );
       break;

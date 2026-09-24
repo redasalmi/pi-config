@@ -64,16 +64,7 @@ npm run check
 
 `npm run check` needs no network access or native notifications.
 
-Run an individual suite with `npm run test:presets`, `test:review`, or
-`test:workflow`.
-
-## Presets
-
-The [Presets extension](extensions/presets/README.md) owns `/preset`, `--preset`,
-and Ctrl+Shift+U for model/thinking/tools/instructions presets. Selecting a preset
-remembers it as the startup default for new sessions. Existing definitions and
-session records remain compatible. Use `/preset status` for configuration
-sources. Run `npm run test:presets`.
+Run an individual suite with `npm run test:review` or `npm run test:workflow`.
 
 ## Multi-role workflow
 

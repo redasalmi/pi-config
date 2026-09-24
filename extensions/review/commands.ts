@@ -1,47 +1,60 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   buildDirective,
+  getReviewCompletions,
   parseReviewArgs,
-  REVIEW_CHOICES,
-  REVIEW_MENU_OPTIONS,
+  REVIEW_MENU,
+  scopeRefs,
   USAGE,
   type ReviewScope,
 } from "./scopes.ts";
-import { readReviewSkill } from "./skill.ts";
 import { notify } from "./utils.ts";
 
+const SKILL_COMMAND = "skill:code-review";
+
+// Esc returns undefined (cancel); Enter on an empty field returns "".
 async function promptScope(ctx: ExtensionContext): Promise<ReviewScope | undefined> {
-  const choice = await ctx.ui.select("Code review scope", [...REVIEW_MENU_OPTIONS]);
-  if (!choice) return undefined;
-  const index = REVIEW_MENU_OPTIONS.indexOf(choice as (typeof REVIEW_MENU_OPTIONS)[number]);
-  switch (REVIEW_CHOICES[index]) {
+  const label = await ctx.ui.select(
+    "Code review scope",
+    REVIEW_MENU.map((option) => option.label),
+  );
+  switch (REVIEW_MENU.find((option) => option.label === label)?.choice) {
     case "base": {
-      const base = (await ctx.ui.input("Base branch or ref", "main"))?.trim();
-      if (!base) return undefined;
-      return { mode: "base", base, head: "HEAD" };
+      const base = (await ctx.ui.input("Base branch or ref", "e.g. origin/main"))?.trim();
+      if (base === "") notify(ctx, "A base ref is required", "error");
+      return base ? { mode: "base", base, head: "HEAD" } : undefined;
     }
     case "uncommitted":
       return { mode: "uncommitted" };
     case "commit": {
       const commit = (await ctx.ui.input("Commit ref", "HEAD"))?.trim();
-      if (!commit) return undefined;
-      return { mode: "commit", commit };
+      return commit === undefined ? undefined : { mode: "commit", commit: commit || "HEAD" };
     }
     case "custom": {
       const focus = (
         await ctx.ui.input("Review instructions", "e.g. focus on auth, migrations, and error handling")
       )?.trim();
-      if (!focus) return undefined;
-      return { mode: "custom", focus };
+      if (focus === "") notify(ctx, "Review instructions are required", "error");
+      return focus ? { mode: "custom", focus } : undefined;
     }
     default:
       return undefined;
   }
 }
 
+async function findInvalidRef(pi: ExtensionAPI, cwd: string, refs: string[]): Promise<string | undefined> {
+  for (const ref of refs) {
+    const args = ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`];
+    const result = await pi.exec("git", args, { cwd });
+    if (result.code !== 0) return ref;
+  }
+  return undefined;
+}
+
 export function registerReviewCommand(pi: ExtensionAPI): void {
   pi.registerCommand("review", {
     description: "Code review a diff: base branch, uncommitted changes, a commit, or custom focus",
+    getArgumentCompletions: getReviewCompletions,
     handler: async (args, ctx) => {
       if (!ctx.isIdle()) {
         notify(ctx, "Wait for the current task to finish before starting a review", "warning");
@@ -66,15 +79,20 @@ export function registerReviewCommand(pi: ExtensionAPI): void {
         if (!scope) return;
       }
 
-      let skill: string;
-      try {
-        skill = readReviewSkill(pi);
-      } catch (error) {
-        notify(ctx, error instanceof Error ? error.message : String(error), "error");
+      // Pi sends an unknown /skill: command as literal text, so check availability first.
+      if (!pi.getCommands().some((command) => command.source === "skill" && command.name === SKILL_COMMAND)) {
+        notify(ctx, 'The "code-review" skill is not available. Install or enable it, then retry the review.', "error");
         return;
       }
 
-      pi.sendUserMessage(`${skill}\n\n---\n\n${buildDirective(scope)}`);
+      const invalid = await findInvalidRef(pi, ctx.cwd, scopeRefs(scope));
+      if (invalid) {
+        notify(ctx, `Unknown git commit or ref "${invalid}"`, "error");
+        return;
+      }
+
+      // Pi's skill expansion wraps the body with its location so relative references resolve.
+      pi.sendUserMessage(`/${SKILL_COMMAND} ${buildDirective(scope)}`, { expandPromptTemplates: true });
     },
   });
 }

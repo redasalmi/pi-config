@@ -3,9 +3,10 @@ import type { ExtensionAPI, ExtensionCommandContext, SlashCommandInfo } from "@e
 type Command = { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> };
 
 // Partial boundary doubles: no real Pi session, UI, or skill loader starts.
-export function harness(options: { skillPath?: string; hasUI?: boolean; idle?: boolean } = {}) {
+export function harness(options: { skillPath?: string; hasUI?: boolean; idle?: boolean; validRefs?: boolean } = {}) {
   const notices: Array<{ message: string; type?: string }> = [];
   const messages: string[] = [];
+  const messageOptions: unknown[] = [];
   const commands = new Map<string, Command>();
   const state = {
     skillPath: options.skillPath,
@@ -30,12 +31,17 @@ export function harness(options: { skillPath?: string; hasUI?: boolean; idle?: b
     registerCommand(name: string, command: Command): void {
       commands.set(name, command);
     },
-    sendUserMessage(text: string): void {
+    sendUserMessage(text: string, sendOptions?: unknown): void {
       messages.push(text);
+      messageOptions.push(sendOptions);
+    },
+    async exec() {
+      return { stdout: "", stderr: "", code: options.validRefs === false ? 1 : 0, killed: false };
     },
   } as unknown as ExtensionAPI;
 
   const ctx = {
+    cwd: process.cwd(),
     hasUI,
     isIdle: () => idle,
     ui: {
@@ -50,6 +56,7 @@ export function harness(options: { skillPath?: string; hasUI?: boolean; idle?: b
     ctx,
     notices,
     messages,
+    messageOptions,
     commands,
     state,
     async run(args = ""): Promise<void> {
